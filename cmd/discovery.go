@@ -18,7 +18,6 @@ type esnode struct {
 	ip      string
 	port    int
 	cluster string
-	version string
 }
 
 const ELASTICSEARCH_SERVICE = "elasticsearch-all"
@@ -35,6 +34,7 @@ func contains(a []string, x string) bool {
 
 func updateEverKnownNodes(allEverKnownNodes []string, nodes []esnode) []string {
 	for _, node := range nodes {
+		// TODO: Replace by a real struct instead of a string concatenation
 		serializedNode := fmt.Sprintf("%v|%v", node.name, node.cluster)
 		if contains(allEverKnownNodes, serializedNode) == false {
 			allEverKnownNodes = append(allEverKnownNodes, serializedNode)
@@ -48,16 +48,6 @@ func clusterNameFromTags(serviceTags []string) string {
 	for _, tag := range serviceTags {
 		splitted := strings.SplitN(tag, "-", 2)
 		if splitted[0] == "cluster_name" {
-			return splitted[1]
-		}
-	}
-	return ""
-}
-
-func versionFromTags(serviceTags []string) string {
-	for _, tag := range serviceTags {
-		splitted := strings.SplitN(tag, "-", 2)
-		if splitted[0] == "version" {
 			return splitted[1]
 		}
 	}
@@ -95,7 +85,6 @@ func discoverNodesForService(serviceName string) ([]esnode, error) {
 			ip:      svc.Address,
 			port:    svc.ServicePort,
 			cluster: clusterNameFromTags(svc.ServiceTags),
-			version: versionFromTags(svc.ServiceTags),
 		})
 	}
 
