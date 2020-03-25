@@ -34,7 +34,8 @@ func contains(a []string, x string) bool {
 
 func updateEverKnownNodes(allEverKnownNodes []string, nodes []esnode) []string {
 	for _, node := range nodes {
-		// TODO: Replace by a real struct instead of a string concatenation
+		// TODO: Replace by a real struct instead of a string concatenation...
+		// also allEverKnownNodes leak memory as it never delete old/cleaned items
 		serializedNode := fmt.Sprintf("%v|%v", node.name, node.cluster)
 		if contains(allEverKnownNodes, serializedNode) == false {
 			allEverKnownNodes = append(allEverKnownNodes, serializedNode)
