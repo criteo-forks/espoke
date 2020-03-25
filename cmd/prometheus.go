@@ -42,9 +42,17 @@ var (
 		[]string{"cluster", "nodename"},
 	)
 
-	nodeAvailabilityGauge = promauto.NewGaugeVec(
+	elasticNodeAvailabilityGauge = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "es_node_availability",
+			Help: "Reflects node availabity : 1 is OK, 0 means node unavailable ",
+		},
+		[]string{"cluster", "nodename"},
+	)
+
+	kibanaNodeAvailabilityGauge = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "kibana_node_availability",
 			Help: "Reflects node availabity : 1 is OK, 0 means node unavailable ",
 		},
 		[]string{"cluster", "nodename"},
@@ -102,8 +110,11 @@ func cleanMetrics(nodes []esnode, allEverKnownNodes []string) error {
 		}
 		if deleteThisNodeMetrics {
 			log.Info("Metrics removed for vanished node ", n[0], " from cluster ", n[1])
-			nodeAvailabilityGauge.DeleteLabelValues(n[1], n[0])
+			elasticNodeAvailabilityGauge.DeleteLabelValues(n[1], n[0])
 			nodeSearchLatencySummary.DeleteLabelValues(n[1], n[0])
+			shardsSuccessfulGauge.DeleteLabelValues(n[1], n[0])
+			docsHitGauge.DeleteLabelValues(n[1], n[0])
+			kibanaNodeAvailabilityGauge.DeleteLabelValues(n[1], n[0])
 		}
 	}
 

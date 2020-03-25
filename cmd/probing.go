@@ -13,7 +13,7 @@ import (
 	"github.com/valyala/fastjson"
 )
 
-func probeNode(node *esnode, updateProbingPeriod time.Duration) error {
+func probeElasticsearchNode(node *esnode, updateProbingPeriod time.Duration) error {
 	client := &http.Client{
 		Timeout: updateProbingPeriod - 2*time.Second,
 	}
@@ -26,7 +26,7 @@ func probeNode(node *esnode, updateProbingPeriod time.Duration) error {
 	if err != nil {
 		log.Debug("Probing failed for ", node.name, ": ", probingURL, " ", err.Error())
 		log.Error(err)
-		nodeAvailabilityGauge.WithLabelValues(node.cluster, node.name).Set(0)
+		elasticNodeAvailabilityGauge.WithLabelValues(node.cluster, node.name).Set(0)
 		errorsCount.Inc()
 		return err
 	}
@@ -35,7 +35,7 @@ func probeNode(node *esnode, updateProbingPeriod time.Duration) error {
 	log.Debug("Probe result for ", node.name, ": ", resp.Status)
 	if resp.StatusCode != 200 {
 		log.Error("Probing failed for ", node.name, ": ", probingURL, " ", resp.Status)
-		nodeAvailabilityGauge.WithLabelValues(node.cluster, node.name).Set(0)
+		elasticNodeAvailabilityGauge.WithLabelValues(node.cluster, node.name).Set(0)
 		errorsCount.Inc()
 		return fmt.Errorf("ES Probing failed")
 	}
@@ -50,8 +50,56 @@ func probeNode(node *esnode, updateProbingPeriod time.Duration) error {
 		}
 	}
 
-	nodeAvailabilityGauge.WithLabelValues(node.cluster, node.name).Set(1)
+	elasticNodeAvailabilityGauge.WithLabelValues(node.cluster, node.name).Set(1)
 	nodeSearchLatencySummary.WithLabelValues(node.cluster, node.name).Observe(durationNanosec)
+
+	return nil
+}
+
+func probeKibanaNode(node *esnode, updateProbingPeriod time.Duration) error {
+	client := &http.Client{
+		Timeout: updateProbingPeriod - 2*time.Second,
+	}
+
+	probingURL := fmt.Sprintf("http://%v:%v/api/status", node.ip, node.port)
+	log.Debug("Start probing ", node.name)
+
+	resp, err := client.Get(probingURL)
+	if err != nil {
+		log.Debug("Probing failed for ", node.name, ": ", probingURL, " ", err.Error())
+		log.Error(err)
+		kibanaNodeAvailabilityGauge.WithLabelValues(node.cluster, node.name).Set(0)
+		errorsCount.Inc()
+		return err
+	}
+
+	log.Debug("Probe result for ", node.name, ": ", resp.Status)
+	if resp.StatusCode != 200 {
+		log.Error("Probing failed for ", node.name, ": ", probingURL, " ", resp.Status)
+		kibanaNodeAvailabilityGauge.WithLabelValues(node.cluster, node.name).Set(0)
+		errorsCount.Inc()
+		return fmt.Errorf("kibana Probing failed")
+	}
+
+	body, readErr := ioutil.ReadAll(resp.Body)
+	if readErr != nil {
+		kibanaNodeAvailabilityGauge.WithLabelValues(node.cluster, node.name).Set(0)
+		return fmt.Errorf("kibana Probing failed: %s", readErr)
+	}
+
+	var p fastjson.Parser
+	v, jsonErr := p.Parse(string(body))
+	if jsonErr != nil {
+		kibanaNodeAvailabilityGauge.WithLabelValues(node.cluster, node.name).Set(0)
+		return fmt.Errorf("kibana Probing failed: %s", jsonErr)
+	}
+	var nodeState = string(v.GetStringBytes("status", "overall", "state"))
+	if nodeState != "green" {
+		kibanaNodeAvailabilityGauge.WithLabelValues(node.cluster, node.name).Set(0)
+		return fmt.Errorf("kibana Probing failed: node not in a green/healthy state")
+	}
+
+	kibanaNodeAvailabilityGauge.WithLabelValues(node.cluster, node.name).Set(1)
 
 	return nil
 }

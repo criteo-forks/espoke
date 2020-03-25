@@ -22,13 +22,21 @@ Expose all measures using a prometheus compliant HTTP endpoint.`,
 		startMetricsEndpoint()
 
 		log.Info("Discovering ES nodes for the first time")
-		allEverKnownNodes := []string{}
-		nodesList, err := discoverEsNodes()
+		var allEverKnownEsNodes []string
+		esNodesList, err := discoverNodesForService(ELASTICSEARCH_SERVICE)
 		if err != nil {
 			errorsCount.Inc()
 			log.Fatal("Impossible to discover ES datanodes during bootstrap, exiting")
 		}
-		allEverKnownNodes = updateEverKnownNodes(allEverKnownNodes, nodesList)
+		allEverKnownEsNodes = updateEverKnownNodes(allEverKnownEsNodes, esNodesList)
+
+		var allEverKnownKibanaNodes []string
+		kibanaNodesList, err := discoverNodesForService(KIBANA_SERVICE)
+		if err != nil {
+			errorsCount.Inc()
+			log.Fatal("Impossible to discover kibana nodes during bootstrap, exiting")
+		}
+		allEverKnownEsNodes = updateEverKnownNodes(allEverKnownKibanaNodes, kibanaNodesList)
 
 		log.Info("Initializing tickers")
 		updateDiscoveryPeriod, err := time.ParseDuration(consulPeriod)
@@ -72,36 +80,60 @@ Expose all measures using a prometheus compliant HTTP endpoint.`,
 			select {
 			case <-cleanMetricsTicker.C:
 				log.Info("Cleaning Prometheus metrics for unreferenced nodes")
-				cleanMetrics(nodesList, allEverKnownNodes)
+				cleanMetrics(esNodesList, allEverKnownEsNodes)
+				cleanMetrics(kibanaNodesList, allEverKnownKibanaNodes)
 
 			case <-updateDiscoveryTicker.C:
+				// Elasticsearch
 				log.Debug("Starting updating ES nodes list")
-
-				updatedList, err := discoverEsNodes()
+				updatedList, err := discoverNodesForService(ELASTICSEARCH_SERVICE)
 				if err != nil {
 					log.Error("Unable to update ES nodes, using last known state")
 					errorsCount.Inc()
 					continue
 				}
 
-				log.Info("Updating nodes list")
-				allEverKnownNodes = updateEverKnownNodes(allEverKnownNodes, updatedList)
-				nodesList = updatedList
+				log.Info("Updating ES nodes list")
+				allEverKnownEsNodes = updateEverKnownNodes(allEverKnownEsNodes, updatedList)
+				esNodesList = updatedList
+
+				// Kibana
+				log.Debug("Starting updating Kibana nodes list")
+				kibanaUpdatedList, err := discoverNodesForService(KIBANA_SERVICE)
+				if err != nil {
+					log.Error("Unable to update Kibana nodes, using last known state")
+					errorsCount.Inc()
+					continue
+				}
+
+				log.Info("Updating kibana nodes list")
+				allEverKnownKibanaNodes = updateEverKnownNodes(allEverKnownKibanaNodes, kibanaUpdatedList)
+				kibanaNodesList = kibanaUpdatedList
 
 			case <-executeProbingTicker.C:
 				log.Debug("Starting probing ES nodes")
 
 				sem := new(sync.WaitGroup)
-				for _, node := range nodesList {
+				for _, node := range esNodesList {
 					sem.Add(1)
-					go func(loopnode esnode) {
+					go func(esNode esnode) {
 						defer sem.Done()
-						probeNode(&loopnode, updateProbingPeriod)
+						probeElasticsearchNode(&esNode, updateProbingPeriod)
 					}(node)
 
 				}
 				sem.Wait()
 
+				log.Debug("Starting probing Kibana nodes")
+				for _, node := range esNodesList {
+					sem.Add(1)
+					go func(kibanaNode esnode) {
+						defer sem.Done()
+						probeKibanaNode(&kibanaNode, updateProbingPeriod)
+					}(node)
+
+				}
+				sem.Wait()
 			}
 		}
 	},

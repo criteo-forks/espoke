@@ -21,6 +21,9 @@ type esnode struct {
 	version string
 }
 
+const ELASTICSEARCH_SERVICE = "elasticsearch-all"
+const KIBANA_SERVICE = "kibana-all"
+
 func contains(a []string, x string) bool {
 	for _, n := range a {
 		if x == n {
@@ -61,7 +64,7 @@ func versionFromTags(serviceTags []string) string {
 	return ""
 }
 
-func discoverEsNodes() ([]esnode, error) {
+func discoverNodesForService(serviceName string) ([]esnode, error) {
 	start := time.Now()
 
 	consulConfig := api.DefaultConfig()
@@ -74,7 +77,7 @@ func discoverEsNodes() ([]esnode, error) {
 	}
 
 	catalogServices, _, err := consul.Catalog().Service(
-		"elasticsearch-all", "",
+		serviceName, "",
 		&api.QueryOptions{AllowStale: true, RequireConsistent: false, UseCache: true},
 	)
 	if err != nil {
