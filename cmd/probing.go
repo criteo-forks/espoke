@@ -88,12 +88,12 @@ func probeKibanaNode(node *esnode, updateProbingPeriod time.Duration) error {
 	}
 
 	var p fastjson.Parser
-	v, jsonErr := p.Parse(string(body))
+	json, jsonErr := p.Parse(string(body))
 	if jsonErr != nil {
 		kibanaNodeAvailabilityGauge.WithLabelValues(node.cluster, node.name).Set(0)
 		return fmt.Errorf("kibana Probing failed: %s", jsonErr)
 	}
-	var nodeState = string(v.GetStringBytes("status", "overall", "state"))
+	nodeState := string(json.GetStringBytes("status", "overall", "state"))
 	if nodeState != "green" {
 		kibanaNodeAvailabilityGauge.WithLabelValues(node.cluster, node.name).Set(0)
 		return fmt.Errorf("kibana Probing failed: node not in a green/healthy state")

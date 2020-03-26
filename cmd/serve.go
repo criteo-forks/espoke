@@ -23,7 +23,7 @@ Expose all measures using a prometheus compliant HTTP endpoint.`,
 
 		log.Info("Discovering ES nodes for the first time")
 		var allEverKnownEsNodes []string
-		esNodesList, err := discoverNodesForService(ELASTICSEARCH_SERVICE)
+		esNodesList, err := discoverNodesForService(elasticsearchConsulService)
 		if err != nil {
 			errorsCount.Inc()
 			log.Fatal("Impossible to discover ES datanodes during bootstrap, exiting")
@@ -31,7 +31,7 @@ Expose all measures using a prometheus compliant HTTP endpoint.`,
 		allEverKnownEsNodes = updateEverKnownNodes(allEverKnownEsNodes, esNodesList)
 
 		var allEverKnownKibanaNodes []string
-		kibanaNodesList, err := discoverNodesForService(KIBANA_SERVICE)
+		kibanaNodesList, err := discoverNodesForService(kibanaConsulService)
 		if err != nil {
 			errorsCount.Inc()
 			log.Fatal("Impossible to discover kibana nodes during bootstrap, exiting")
@@ -86,7 +86,7 @@ Expose all measures using a prometheus compliant HTTP endpoint.`,
 			case <-updateDiscoveryTicker.C:
 				// Elasticsearch
 				log.Debug("Starting updating ES nodes list")
-				updatedList, err := discoverNodesForService(ELASTICSEARCH_SERVICE)
+				updatedList, err := discoverNodesForService(elasticsearchConsulService)
 				if err != nil {
 					log.Error("Unable to update ES nodes, using last known state")
 					errorsCount.Inc()
@@ -99,7 +99,7 @@ Expose all measures using a prometheus compliant HTTP endpoint.`,
 
 				// Kibana
 				log.Debug("Starting updating Kibana nodes list")
-				kibanaUpdatedList, err := discoverNodesForService(KIBANA_SERVICE)
+				kibanaUpdatedList, err := discoverNodesForService(kibanaConsulService)
 				if err != nil {
 					log.Error("Unable to update Kibana nodes, using last known state")
 					errorsCount.Inc()

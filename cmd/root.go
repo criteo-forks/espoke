@@ -20,6 +20,8 @@ var probePeriod string
 var cleanMetricsPeriod string
 var metricsPort int
 var loglevel string
+var elasticsearchConsulService string
+var kibanaConsulService string
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -56,6 +58,8 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&consulPeriod, "consulPeriod", "120s", "nodes discovery update interval")
 	rootCmd.PersistentFlags().StringVar(&cleanMetricsPeriod, "cleaningPeriod", "600s", "prometheus metrics cleaning interval (for vanished nodes)")
 	rootCmd.PersistentFlags().StringVar(&probePeriod, "probePeriod", "30s", "elasticsearch nodes probing interval")
+	rootCmd.PersistentFlags().StringVar(&elasticsearchConsulService, "elasticsearchConsulService", "elasticsearch-all", "elasticsearch consul service")
+	rootCmd.PersistentFlags().StringVar(&kibanaConsulService, "kibanaConsulService", "kibana-all", "kibana consul service")
 	rootCmd.PersistentFlags().IntVarP(&metricsPort, "metricsPort", "p", 2112, "port where prometheus will expose metrics to")
 	rootCmd.PersistentFlags().StringVarP(&loglevel, "loglevel", "l", "info", "log level")
 

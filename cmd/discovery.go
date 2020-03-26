@@ -20,9 +20,6 @@ type esnode struct {
 	cluster string
 }
 
-const ELASTICSEARCH_SERVICE = "elasticsearch-all"
-const KIBANA_SERVICE = "kibana-all"
-
 func contains(a []string, x string) bool {
 	for _, n := range a {
 		if x == n {
