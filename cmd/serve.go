@@ -125,7 +125,7 @@ Expose all measures using a prometheus compliant HTTP endpoint.`,
 				sem.Wait()
 
 				log.Debug("Starting probing Kibana nodes")
-				for _, node := range esNodesList {
+				for _, node := range kibanaNodesList {
 					sem.Add(1)
 					go func(kibanaNode esnode) {
 						defer sem.Done()
