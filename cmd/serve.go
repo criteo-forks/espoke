@@ -4,9 +4,6 @@
 package cmd
 
 import (
-	"fmt"
-	"github.com/mitchellh/go-homedir"
-	"github.com/spf13/viper"
 	"os"
 	"sync"
 	"time"
@@ -15,7 +12,6 @@ import (
 )
 
 type ServeCmd struct {
-	ConfigFile                 string        `help:"config file (default is $HOME/.espoke.yaml)" yaml:"config" short:"c"`
 	ConsulApi                  string        `default:"127.0.0.1:8500" help:"127.0.0.1:8500" "consul target api host:port" yaml:"consul_api" short:"a"`
 	ConsulPeriod               time.Duration `default:"120s" help:"nodes discovery update interval" yaml:"consul_period"`
 	CleaningPeriod             time.Duration `default:"600s" help:"prometheus metrics cleaning interval (for vanished nodes)" yaml:"cleaning_period"`
@@ -27,7 +23,15 @@ type ServeCmd struct {
 }
 
 func (r *ServeCmd) Run() error {
-	r.initConfig()
+	// Init logger
+	log.SetOutput(os.Stdout)
+	lvl, err := log.ParseLevel(r.LogLevel)
+	if err != nil {
+		log.Warning("Log level not recognized, fallback to default level (INFO)")
+		lvl = log.InfoLevel
+	}
+	log.SetLevel(lvl)
+	log.Info("Logger initialized")
 
 	log.Info("Entering serve main loop")
 	startMetricsEndpoint(r.MetricsPort)
@@ -132,40 +136,4 @@ func (r *ServeCmd) Run() error {
 			sem.Wait()
 		}
 	}
-}
-
-// initConfig reads in config file and ENV variables if set.
-func (r *ServeCmd) initConfig() {
-	if r.ConfigFile != "" {
-		// Use config file from the flag.
-		viper.SetConfigFile(r.ConfigFile)
-	} else {
-		// Find home directory.
-		home, err := homedir.Dir()
-		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
-		}
-
-		// Search config in home directory with name ".espoke" (without extension).
-		viper.AddConfigPath(home)
-		viper.SetConfigName(".espoke")
-	}
-
-	viper.AutomaticEnv() // read in environment variables that match
-
-	// If a config file is found, read it in.
-	if err := viper.ReadInConfig(); err == nil {
-		fmt.Println("Using config file:", viper.ConfigFileUsed())
-	}
-
-	// Init logger
-	log.SetOutput(os.Stdout)
-	lvl, err := log.ParseLevel(r.LogLevel)
-	if err != nil {
-		log.Warning("Log level not recognized, fallback to default level (INFO)")
-		lvl = log.InfoLevel
-	}
-	log.SetLevel(lvl)
-	log.Info("Logger initialized")
 }
