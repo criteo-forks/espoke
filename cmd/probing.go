@@ -40,18 +40,8 @@ func probeElasticsearchNode(node *esnode, updateProbingPeriod time.Duration) err
 		return fmt.Errorf("ES Probing failed")
 	}
 
-	body, readErr := ioutil.ReadAll(resp.Body)
-	if readErr == nil {
-		var p fastjson.Parser
-		v, jsonErr := p.Parse(string(body))
-		if jsonErr == nil {
-			shardsSuccessfulGauge.WithLabelValues(node.cluster, node.name).Set(v.GetFloat64("_shards", "successful"))
-			docsHitGauge.WithLabelValues(node.cluster, node.name).Set(v.GetFloat64("hits", "total"))
-		}
-	}
-
 	elasticNodeAvailabilityGauge.WithLabelValues(node.cluster, node.name).Set(1)
-	nodeSearchLatencySummary.WithLabelValues(node.cluster, node.name).Observe(durationNanosec)
+	nodeCatLatencySummary.WithLabelValues(node.cluster, node.name).Observe(durationNanosec)
 
 	return nil
 }

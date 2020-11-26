@@ -26,22 +26,6 @@ var (
 		Help: "Reports current discovered nodes amount",
 	})
 
-	shardsSuccessfulGauge = promauto.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "es_node_shards_successful",
-			Help: "Reports current successful shards",
-		},
-		[]string{"cluster", "nodename"},
-	)
-
-	docsHitGauge = promauto.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "es_node_documents_hit",
-			Help: "Reports current successful shards",
-		},
-		[]string{"cluster", "nodename"},
-	)
-
 	elasticNodeAvailabilityGauge = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "es_node_availability",
@@ -58,10 +42,10 @@ var (
 		[]string{"cluster", "nodename"},
 	)
 
-	nodeSearchLatencySummary = promauto.NewSummaryVec(
+	nodeCatLatencySummary = promauto.NewSummaryVec(
 		prometheus.SummaryOpts{
-			Name:       "es_node_search_latency",
-			Help:       "Measure latency for every node (quantiles - in ns)",
+			Name:       "es_node_cat_latency",
+			Help:       "Measure latency to query cat api for every node (quantiles - in ns)",
 			MaxAge:     20 * time.Minute, // default value * 2
 			AgeBuckets: 20,               // default value * 4
 			BufCap:     2000,             // default value * 4
@@ -111,9 +95,7 @@ func cleanMetrics(nodes []esnode, allEverKnownNodes []string) error {
 		if deleteThisNodeMetrics {
 			log.Info("Metrics removed for vanished node ", n[0], " from cluster ", n[1])
 			elasticNodeAvailabilityGauge.DeleteLabelValues(n[1], n[0])
-			nodeSearchLatencySummary.DeleteLabelValues(n[1], n[0])
-			shardsSuccessfulGauge.DeleteLabelValues(n[1], n[0])
-			docsHitGauge.DeleteLabelValues(n[1], n[0])
+			nodeCatLatencySummary.DeleteLabelValues(n[1], n[0])
 			kibanaNodeAvailabilityGauge.DeleteLabelValues(n[1], n[0])
 		}
 	}
