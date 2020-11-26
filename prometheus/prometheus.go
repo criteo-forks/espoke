@@ -1,10 +1,11 @@
 // Copyright © 2018 Barthelemy Vessemont
 // GNU General Public License version 3
 
-package cmd
+package prometheus
 
 import (
 	"fmt"
+	"github.com/criteo-forks/espoke/common"
 	"net/http"
 	"strings"
 	"time"
@@ -16,17 +17,17 @@ import (
 )
 
 var (
-	errorsCount = promauto.NewCounter(prometheus.CounterOpts{
+	ErrorsCount = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "es_probe_errors_count",
 		Help: "Reports Espoke internal errors absolute counter since start",
 	})
 
-	nodeCount = promauto.NewGauge(prometheus.GaugeOpts{
+	NodeCount = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "es_node_count",
 		Help: "Reports current discovered nodes amount",
 	})
 
-	elasticNodeAvailabilityGauge = promauto.NewGaugeVec(
+	ElasticNodeAvailabilityGauge = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "es_node_availability",
 			Help: "Reflects node availabity : 1 is OK, 0 means node unavailable ",
@@ -34,7 +35,7 @@ var (
 		[]string{"cluster", "nodename"},
 	)
 
-	kibanaNodeAvailabilityGauge = promauto.NewGaugeVec(
+	KibanaNodeAvailabilityGauge = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "kibana_node_availability",
 			Help: "Reflects node availabity : 1 is OK, 0 means node unavailable ",
@@ -42,7 +43,7 @@ var (
 		[]string{"cluster", "nodename"},
 	)
 
-	nodeCatLatencySummary = promauto.NewSummaryVec(
+	NodeCatLatencySummary = promauto.NewSummaryVec(
 		prometheus.SummaryOpts{
 			Name:       "es_node_cat_latency",
 			Help:       "Measure latency to query cat api for every node (quantiles - in ns)",
@@ -53,7 +54,7 @@ var (
 		[]string{"cluster", "nodename"},
 	)
 
-	consulDiscoveryDurationSummary = promauto.NewSummary(prometheus.SummaryOpts{
+	ConsulDiscoveryDurationSummary = promauto.NewSummary(prometheus.SummaryOpts{
 		Name:       "es_probe_consul_discovery_duration",
 		Help:       "Time spent for discovering nodes using Consul API (in ns)",
 		MaxAge:     20 * time.Minute, // default value * 2
@@ -61,7 +62,7 @@ var (
 		BufCap:     2000,             // default value * 4
 	})
 
-	cleaningMetricsDurationSummary = promauto.NewSummary(prometheus.SummaryOpts{
+	CleaningMetricsDurationSummary = promauto.NewSummary(prometheus.SummaryOpts{
 		Name:       "es_probe_metrics_cleaning_duration",
 		Help:       "Time spent for cleaning vanished nodes metrics (in ns)",
 		MaxAge:     120 * time.Minute, // default value * 6
@@ -70,7 +71,7 @@ var (
 	})
 )
 
-func startMetricsEndpoint(metricsPort int) {
+func StartMetricsEndpoint(metricsPort int) {
 	log.Info("Starting Prometheus /metrics endpoint on port ", metricsPort)
 	http.Handle("/metrics", promhttp.Handler())
 	go func() {
@@ -78,7 +79,7 @@ func startMetricsEndpoint(metricsPort int) {
 	}()
 }
 
-func cleanMetrics(nodes []esnode, allEverKnownNodes []string) error {
+func CleanMetrics(nodes []common.Esnode, allEverKnownNodes []string) error {
 	start := time.Now()
 
 	for _, nodeSerializedString := range allEverKnownNodes {
@@ -86,7 +87,7 @@ func cleanMetrics(nodes []esnode, allEverKnownNodes []string) error {
 
 		deleteThisNodeMetrics := true
 		for _, node := range nodes {
-			if (node.name == n[0]) && (node.cluster == n[1]) {
+			if (node.Name == n[0]) && (node.Cluster == n[1]) {
 				log.Debug("Metrics are live for node ", n[0], " from cluster ", n[1], " - keeping them")
 				deleteThisNodeMetrics = false
 				continue
@@ -94,13 +95,13 @@ func cleanMetrics(nodes []esnode, allEverKnownNodes []string) error {
 		}
 		if deleteThisNodeMetrics {
 			log.Info("Metrics removed for vanished node ", n[0], " from cluster ", n[1])
-			elasticNodeAvailabilityGauge.DeleteLabelValues(n[1], n[0])
-			nodeCatLatencySummary.DeleteLabelValues(n[1], n[0])
-			kibanaNodeAvailabilityGauge.DeleteLabelValues(n[1], n[0])
+			ElasticNodeAvailabilityGauge.DeleteLabelValues(n[1], n[0])
+			NodeCatLatencySummary.DeleteLabelValues(n[1], n[0])
+			KibanaNodeAvailabilityGauge.DeleteLabelValues(n[1], n[0])
 		}
 	}
 
 	durationNanosec := float64(time.Since(start).Nanoseconds())
-	cleaningMetricsDurationSummary.Observe(durationNanosec)
+	CleaningMetricsDurationSummary.Observe(durationNanosec)
 	return nil
 }
