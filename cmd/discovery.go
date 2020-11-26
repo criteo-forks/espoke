@@ -65,7 +65,7 @@ func schemeFromTags(serviceTags []string) string {
 	return scheme
 }
 
-func discoverNodesForService(serviceName string) ([]esnode, error) {
+func discoverNodesForService(consulTarget string, serviceName string) ([]esnode, error) {
 	start := time.Now()
 
 	consulConfig := api.DefaultConfig()

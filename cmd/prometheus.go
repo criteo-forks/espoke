@@ -70,7 +70,7 @@ var (
 	})
 )
 
-func startMetricsEndpoint() {
+func startMetricsEndpoint(metricsPort int) {
 	log.Info("Starting Prometheus /metrics endpoint on port ", metricsPort)
 	http.Handle("/metrics", promhttp.Handler())
 	go func() {

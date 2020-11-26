@@ -16,9 +16,22 @@
 package main
 
 import (
+	"github.com/alecthomas/kong"
 	"github.com/criteo-forks/espoke/cmd"
 )
 
+var CLI struct {
+	/*espoke is a whitebox probing tool for Elasticsearch clusters.
+	It completes the following actions :
+	 * discover every ES clusters registered in Consul
+	 * run an empty search query against every discovered indexes, data servers & clusters
+	 * expose latency metrics with tags for clusters and nodes
+	 * expose avaibility metrics with tags for clusters and nodes*/
+	Serve cmd.ServeCmd `cmd help:"espoke is a whitebox probing tool for Elasticsearch clusters"`
+}
+
 func main() {
-	cmd.Execute()
+	ctx := kong.Parse(&CLI)
+	err := ctx.Run()
+	ctx.FatalIfErrorf(err)
 }
