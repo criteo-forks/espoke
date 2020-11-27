@@ -3,52 +3,27 @@ package watcher
 import (
 	"github.com/criteo-forks/espoke/common"
 	"github.com/criteo-forks/espoke/probe"
-	"github.com/criteo-forks/espoke/prometheus"
 	log "github.com/sirupsen/logrus"
-	"sync"
 	"time"
 )
 
 // Watcher manages the pool of S3 endpoints to monitor
 type Watcher struct {
-	elasticsearchConsulService string
-	kibanaConsulService        string
-	consulApi                  string
+	elasticsearchConsulTag string
+	kibanaConsulTag        string
+	consulApi              string
 
-	probePeriod time.Duration
+	consulPeriod   time.Duration
+	probePeriod    time.Duration
+	cleaningPeriod time.Duration
 
-	updateDiscoveryTicker *time.Ticker
-	cleanMetricsTicker    *time.Ticker
-	executeProbingTicker  *time.Ticker
-
-	esNodesList         []common.Esnode
-	allEverKnownEsNodes []string
-
-	kibanaNodesList         []common.Esnode
-	allEverKnownKibanaNodes []string
-
-	elasticsearchCluster map[string](chan bool)
-	kibanaCluster        map[string](chan bool)
+	elasticsearchClusters map[string](chan bool)
+	kibanaClusters        map[string](chan bool)
 }
 
 // NewWatcher creates a new watcher and prepare the consul client
-func NewWatcher(elasticsearchConsulService, kibanaConsulService, consulApi string, consulPeriod, cleaningPeriod, probePeriod time.Duration) Watcher {
+func NewWatcher(elasticsearchConsulTag, kibanaConsulTag, consulApi string, consulPeriod, cleaningPeriod, probePeriod time.Duration) Watcher {
 	log.Info("Discovering ES nodes for the first time")
-	var allEverKnownEsNodes []string
-	esNodesList, err := discoverNodesForService(consulApi, elasticsearchConsulService)
-	if err != nil {
-		prometheus.ErrorsCount.Inc()
-		log.Fatal("Impossible to discover ES datanodes during bootstrap, exiting")
-	}
-	allEverKnownEsNodes = updateEverKnownNodes(allEverKnownEsNodes, esNodesList)
-
-	var allEverKnownKibanaNodes []string
-	kibanaNodesList, err := discoverNodesForService(consulApi, kibanaConsulService)
-	if err != nil {
-		prometheus.ErrorsCount.Inc()
-		log.Fatal("Impossible to discover kibana nodes during bootstrap, exiting")
-	}
-	allEverKnownKibanaNodes = updateEverKnownNodes(allEverKnownKibanaNodes, kibanaNodesList)
 
 	log.Info("Initializing tickers")
 	if consulPeriod < 60*time.Second {
@@ -70,88 +45,138 @@ func NewWatcher(elasticsearchConsulService, kibanaConsulService, consulApi strin
 	log.Info("Metrics pruning interval: ", cleaningPeriod.String())
 
 	return Watcher{
-		elasticsearchConsulService: elasticsearchConsulService,
-		kibanaConsulService:        kibanaConsulService,
-		consulApi:                  consulApi,
+		elasticsearchConsulTag: elasticsearchConsulTag,
+		kibanaConsulTag:        kibanaConsulTag,
+		consulApi:              consulApi,
 
-		probePeriod: probePeriod,
+		consulPeriod:   consulPeriod,
+		probePeriod:    probePeriod,
+		cleaningPeriod: cleaningPeriod,
 
-		updateDiscoveryTicker: time.NewTicker(consulPeriod),
-		cleanMetricsTicker:    time.NewTicker(cleaningPeriod),
-		executeProbingTicker:  time.NewTicker(probePeriod),
-
-		esNodesList:         esNodesList,
-		allEverKnownEsNodes: allEverKnownEsNodes,
-
-		kibanaNodesList:         kibanaNodesList,
-		allEverKnownKibanaNodes: allEverKnownKibanaNodes,
-
-		elasticsearchCluster: make(map[string]chan bool),
-		kibanaCluster:        make(map[string]chan bool),
+		elasticsearchClusters: make(map[string]chan bool),
+		kibanaClusters:        make(map[string]chan bool),
 	}
 }
 
 // WatchPools poll consul services with specified tag and create
 // probe gorountines
-func (w *Watcher) WatchPools() {
+func (w *Watcher) WatchPools() error {
+
 	for {
-		select {
-		case <-w.cleanMetricsTicker.C:
-			log.Info("Cleaning Prometheus metrics for unreferenced nodes")
-			prometheus.CleanMetrics(w.esNodesList, w.allEverKnownEsNodes)
-			prometheus.CleanMetrics(w.kibanaNodesList, w.allEverKnownKibanaNodes)
+		// Elasticsearch service
+		esServicesFromConsul, err := common.GetServices(w.consulApi, w.elasticsearchConsulTag)
+		if err != nil {
+			return err
+		}
 
-		case <-w.updateDiscoveryTicker.C:
-			// Elasticsearch
-			log.Debug("Starting updating ES nodes list")
-			updatedList, err := discoverNodesForService(w.consulApi, w.elasticsearchConsulService)
-			if err != nil {
-				log.Error("Unable to update ES nodes, using last known state")
-				prometheus.ErrorsCount.Inc()
-				continue
-			}
+		esWatchedServices := w.getWatchedServices(w.elasticsearchClusters)
 
-			log.Info("Updating ES nodes list")
-			w.allEverKnownEsNodes = updateEverKnownNodes(w.allEverKnownEsNodes, updatedList)
-			w.esNodesList = updatedList
+		esServicesToAdd, sServicesToRemove := w.getServicesToModify(esServicesFromConsul, esWatchedServices)
+		w.flushOldProbes(sServicesToRemove, w.elasticsearchClusters)
+		w.createNewEsProbes(esServicesToAdd)
 
-			// Kibana
-			log.Debug("Starting updating Kibana nodes list")
-			kibanaUpdatedList, err := discoverNodesForService(w.consulApi, w.kibanaConsulService)
-			if err != nil {
-				log.Error("Unable to update Kibana nodes, using last known state")
-				prometheus.ErrorsCount.Inc()
-				continue
-			}
+		// Kibana service
+		kibanaServicesFromConsul, err := common.GetServices(w.consulApi, w.kibanaConsulTag)
+		if err != nil {
+			return err
+		}
 
-			log.Info("Updating kibana nodes list")
-			w.allEverKnownKibanaNodes = updateEverKnownNodes(w.allEverKnownKibanaNodes, kibanaUpdatedList)
-			w.kibanaNodesList = kibanaUpdatedList
+		kibanaWatchedServices := w.getWatchedServices(w.kibanaClusters)
 
-		case <-w.executeProbingTicker.C:
-			log.Debug("Starting probing ES nodes")
+		kibanaServicesToAdd, kibanaServicesToRemove := w.getServicesToModify(kibanaServicesFromConsul, kibanaWatchedServices)
+		w.flushOldProbes(kibanaServicesToRemove, w.kibanaClusters)
+		w.createNewKibanaProbes(kibanaServicesToAdd)
 
-			sem := new(sync.WaitGroup)
-			for _, node := range w.esNodesList {
-				sem.Add(1)
-				go func(esNode common.Esnode) {
-					defer sem.Done()
-					probe.ProbeElasticsearchNode(&esNode, w.probePeriod)
-				}(node)
+		time.Sleep(w.consulPeriod)
+	}
+	return nil
+}
 
-			}
-			sem.Wait()
+func (w *Watcher) getWatchedServices(watchedClusters map[string](chan bool)) []string {
+	currentServices := []string{}
 
-			log.Debug("Starting probing Kibana nodes")
-			for _, node := range w.kibanaNodesList {
-				sem.Add(1)
-				go func(kibanaNode common.Esnode) {
-					defer sem.Done()
-					probe.ProbeKibanaNode(&kibanaNode, w.probePeriod)
-				}(node)
+	for k, _ := range watchedClusters {
+		currentServices = append(currentServices, k)
+	}
+	return currentServices
+}
 
-			}
-			sem.Wait()
+func (w *Watcher) createNewEsProbes(servicesToAdd map[string]common.Cluster) {
+	var probeChan chan bool
+	for cluster, clusterConfig := range servicesToAdd {
+		log.Printf("Creating new es probe for: %s", cluster)
+		probeChan = make(chan bool)
+		esProbe, err := probe.NewEsProbe(cluster, w.consulApi, clusterConfig, w.consulPeriod, w.probePeriod, w.cleaningPeriod, probeChan)
+
+		if err != nil {
+			log.Println("Error while creating probe:", err)
+			continue
+		}
+
+		err = esProbe.PrepareEsProbing()
+		if err != nil {
+			log.Println("Error while preparing probe:", err)
+			close(probeChan)
+			continue
+		}
+
+		w.elasticsearchClusters[cluster] = probeChan
+		go esProbe.StartEsProbing()
+	}
+}
+func (w *Watcher) createNewKibanaProbes(servicesToAdd map[string]common.Cluster) {
+	var probeChan chan bool
+	for cluster, clusterConfig := range servicesToAdd {
+		log.Printf("Creating new kibana probe for: %s", cluster)
+		probeChan = make(chan bool)
+		esProbe, err := probe.NewKibanaProbe(cluster, w.consulApi, clusterConfig, w.consulPeriod, w.probePeriod, w.cleaningPeriod, probeChan)
+
+		if err != nil {
+			log.Println("Error while creating probe:", err)
+			continue
+		}
+
+		w.kibanaClusters[cluster] = probeChan
+		go esProbe.StartKibanaProbing()
+	}
+}
+func (w *Watcher) flushOldProbes(servicesToRemove []string, watchedClusters map[string](chan bool)) {
+	var ok bool
+	var probeChan chan bool
+	for _, name := range servicesToRemove {
+		log.Printf("Removing old probe for: %s", name)
+		probeChan, ok = watchedClusters[name]
+		if ok {
+			delete(watchedClusters, name)
+			probeChan <- false
+			close(probeChan)
 		}
 	}
+}
+
+func (w *Watcher) getServicesToModify(servicesFromConsul map[string]common.Cluster, watchedServices []string) (map[string]common.Cluster, []string) {
+	servicesToAdd := make(map[string]common.Cluster)
+	for cluster, clusterConfig := range servicesFromConsul {
+		if !w.stringInSlice(cluster, watchedServices) {
+			servicesToAdd[cluster] = clusterConfig
+		}
+	}
+
+	var servicesToRemove []string
+	for _, cluster := range watchedServices {
+		_, ok := servicesFromConsul[cluster]
+		if !ok {
+			servicesToRemove = append(servicesToRemove, cluster)
+		}
+	}
+	return servicesToAdd, servicesToRemove
+}
+
+func (w *Watcher) stringInSlice(a string, list []string) bool {
+	for _, b := range list {
+		if b == a {
+			return true
+		}
+	}
+	return false
 }

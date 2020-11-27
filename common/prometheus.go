@@ -1,11 +1,10 @@
 // Copyright © 2018 Barthelemy Vessemont
 // GNU General Public License version 3
 
-package prometheus
+package common
 
 import (
 	"fmt"
-	"github.com/criteo-forks/espoke/common"
 	"net/http"
 	"strings"
 	"time"
@@ -79,7 +78,7 @@ func StartMetricsEndpoint(metricsPort int) {
 	}()
 }
 
-func CleanMetrics(nodes []common.Esnode, allEverKnownNodes []string) error {
+func CleanMetrics(nodes []Node, allEverKnownNodes []string) error {
 	start := time.Now()
 
 	for _, nodeSerializedString := range allEverKnownNodes {

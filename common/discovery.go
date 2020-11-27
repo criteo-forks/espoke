@@ -1,13 +1,10 @@
 // Copyright © 2018 Barthelemy Vessemont
 // GNU General Public License version 3
 
-package watcher
+package common
 
 import (
 	"fmt"
-	"github.com/criteo-forks/espoke/common"
-	"github.com/criteo-forks/espoke/prometheus"
-
 	"sort"
 	"strings"
 	"time"
@@ -25,7 +22,7 @@ func contains(a []string, x string) bool {
 	return false
 }
 
-func updateEverKnownNodes(allEverKnownNodes []string, nodes []common.Esnode) []string {
+func UpdateEverKnownNodes(allEverKnownNodes []string, nodes []Node) []string {
 	for _, node := range nodes {
 		// TODO: Replace by a real struct instead of a string concatenation...
 		// also allEverKnownNodes leak memory as it never delete old/cleaned items
@@ -60,7 +57,7 @@ func schemeFromTags(serviceTags []string) string {
 	return scheme
 }
 
-func discoverNodesForService(consulTarget string, serviceName string) ([]common.Esnode, error) {
+func DiscoverNodesForService(consulTarget string, serviceName string) ([]Node, error) {
 	start := time.Now()
 
 	consulConfig := api.DefaultConfig()
@@ -68,7 +65,7 @@ func discoverNodesForService(consulTarget string, serviceName string) ([]common.
 	consul, err := api.NewClient(consulConfig)
 	if err != nil {
 		log.Debug("Consul Connection failed: ", err.Error())
-		prometheus.ErrorsCount.Inc()
+		ErrorsCount.Inc()
 		return nil, err
 	}
 
@@ -78,11 +75,11 @@ func discoverNodesForService(consulTarget string, serviceName string) ([]common.
 	)
 	if err != nil {
 		log.Error("Consul Discovery failed: ", err.Error())
-		prometheus.ErrorsCount.Inc()
+		ErrorsCount.Inc()
 		return nil, err
 	}
 
-	var nodeList []common.Esnode
+	var nodeList []Node
 	for _, svc := range catalogServices {
 		var addr string = svc.Address
 		if svc.ServiceAddress != "" {
@@ -90,7 +87,7 @@ func discoverNodesForService(consulTarget string, serviceName string) ([]common.
 		}
 
 		log.Debug("Service discovered: ", svc.Node, " (", addr, ":", svc.ServicePort, ")")
-		nodeList = append(nodeList, common.Esnode{
+		nodeList = append(nodeList, Node{
 			Name:    svc.Node,
 			Ip:      addr,
 			Port:    svc.ServicePort,
@@ -100,9 +97,43 @@ func discoverNodesForService(consulTarget string, serviceName string) ([]common.
 	}
 
 	nodesCount := len(nodeList)
-	prometheus.NodeCount.Set(float64(nodesCount))
+	NodeCount.Set(float64(nodesCount))
 	log.Debug(nodesCount, " nodes found")
 
-	prometheus.ConsulDiscoveryDurationSummary.Observe(float64(time.Since(start).Nanoseconds()))
+	ConsulDiscoveryDurationSummary.Observe(float64(time.Since(start).Nanoseconds()))
 	return nodeList, nil
+}
+
+func GetServices(consulTarget string, consulTag string) (map[string]Cluster, error) {
+	consulConfig := api.DefaultConfig()
+	consulConfig.Address = consulTarget
+	consul, err := api.NewClient(consulConfig)
+	if err != nil {
+		log.Debug("Consul Connection failed: ", err.Error())
+		ErrorsCount.Inc()
+		return nil, err
+	}
+	consulServices, _, _ := consul.Catalog().Services(nil)
+
+	var services = make(map[string]Cluster)
+	var service Cluster
+	for serviceName := range consulServices {
+		for i := range consulServices[serviceName] {
+			if consulServices[serviceName][i] == consulTag {
+				// Check cluster not already added
+				cluster := clusterNameFromTags(consulServices[serviceName])
+				// TODO ensure we use https when available?
+				_, ok := services[cluster]
+				if !ok {
+					service = Cluster{
+						Name:   serviceName,
+						Scheme: schemeFromTags(consulServices[serviceName]),
+					}
+					services[cluster] = service
+				}
+				break
+			}
+		}
+	}
+	return services, nil
 }
