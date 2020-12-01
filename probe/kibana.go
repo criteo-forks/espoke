@@ -81,9 +81,9 @@ func probeKibanaNode(node *common.Node, timeout time.Duration) error {
 	return nil
 }
 
-func NewKibanaProbe(clusterName, consulApi string, clusterConfig common.Cluster, consulPeriod, probePeriod, cleaningPeriod time.Duration, controlChan chan bool) (KibanaProbe, error) {
+func NewKibanaProbe(clusterName string, clusterConfig common.Cluster, config *common.Config, controlChan chan bool) (KibanaProbe, error) {
 	var allEverKnownKibanaNodes []string
-	kibanaNodesList, err := common.DiscoverNodesForService(consulApi, clusterConfig.Name)
+	kibanaNodesList, err := common.DiscoverNodesForService(config.ConsulApi, clusterConfig.Name)
 	if err != nil {
 		common.ErrorsCount.Inc()
 		log.Fatal("Impossible to discover kibana nodes during bootstrap, exiting")
@@ -92,14 +92,14 @@ func NewKibanaProbe(clusterName, consulApi string, clusterConfig common.Cluster,
 
 	return KibanaProbe{
 		clusterName:   clusterName,
-		consulApi:     consulApi,
+		consulApi:     config.ConsulApi,
 		clusterConfig: clusterConfig,
 
-		timeout: probePeriod - 2*time.Second,
+		timeout: config.ProbePeriod - 2*time.Second,
 
-		updateDiscoveryTicker: time.NewTicker(consulPeriod),
-		executeProbingTicker:  time.NewTicker(probePeriod),
-		cleanMetricsTicker:    time.NewTicker(cleaningPeriod),
+		updateDiscoveryTicker: time.NewTicker(config.ConsulPeriod),
+		executeProbingTicker:  time.NewTicker(config.ProbePeriod),
+		cleanMetricsTicker:    time.NewTicker(config.CleaningPeriod),
 
 		kibanaNodesList:         kibanaNodesList,
 		allEverKnownKibanaNodes: allEverKnownKibanaNodes,
@@ -116,12 +116,12 @@ func (kibana *KibanaProbe) StartKibanaProbing() error {
 			kibana.cleanMetricsTicker.Stop()
 			kibana.updateDiscoveryTicker.Stop()
 			kibana.executeProbingTicker.Stop()
-			common.CleanMetrics(kibana.kibanaNodesList, kibana.allEverKnownKibanaNodes)
+			common.CleanNodeMetrics(kibana.kibanaNodesList, kibana.allEverKnownKibanaNodes)
 			return nil
 
 		case <-kibana.cleanMetricsTicker.C:
 			log.Info("Cleaning Prometheus metrics for unreferenced nodes")
-			common.CleanMetrics(kibana.kibanaNodesList, kibana.allEverKnownKibanaNodes)
+			common.CleanNodeMetrics(kibana.kibanaNodesList, kibana.allEverKnownKibanaNodes)
 
 		case <-kibana.updateDiscoveryTicker.C:
 			// Kibana

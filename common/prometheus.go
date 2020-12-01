@@ -16,6 +16,46 @@ import (
 )
 
 var (
+	IndexProbeStatus = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "es_index_probe_status",
+			Help: "Indicate index probe status (green is 1, yellow is 1 and red is 2)",
+		},
+		[]string{"cluster", "index"},
+	)
+
+	ClusterDurabilityDocumentsCount = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "es_cluster_durability_documents_count",
+			Help: "Reports number of documents count in durability index",
+		},
+		[]string{"cluster"})
+
+	ClusterSearchDocumentsHits = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "es_cluster_search_documents_hits",
+			Help: "Reports number of documents hits from the search",
+		},
+		[]string{"cluster", "index"})
+
+	ClusterLatencySummary = promauto.NewSummaryVec(
+		prometheus.SummaryOpts{
+			Name:       "es_cluster_latency",
+			Help:       "Measure latency to do operation",
+			MaxAge:     20 * time.Minute, // default value * 2
+			AgeBuckets: 20,               // default value * 4
+			BufCap:     2000,             // default value * 4
+		},
+		[]string{"cluster", "index", "operation"},
+	)
+
+	ClusterErrorsCount = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "es_cluster_errors_count",
+			Help: "Reports Espoke errors doing action with a cluster",
+		},
+		[]string{"cluster"})
+
 	ErrorsCount = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "es_probe_errors_count",
 		Help: "Reports Espoke internal errors absolute counter since start",
@@ -52,22 +92,6 @@ var (
 		},
 		[]string{"cluster", "nodename"},
 	)
-
-	ConsulDiscoveryDurationSummary = promauto.NewSummary(prometheus.SummaryOpts{
-		Name:       "es_probe_consul_discovery_duration",
-		Help:       "Time spent for discovering nodes using Consul API (in ns)",
-		MaxAge:     20 * time.Minute, // default value * 2
-		AgeBuckets: 20,               // default value * 4
-		BufCap:     2000,             // default value * 4
-	})
-
-	CleaningMetricsDurationSummary = promauto.NewSummary(prometheus.SummaryOpts{
-		Name:       "es_probe_metrics_cleaning_duration",
-		Help:       "Time spent for cleaning vanished nodes metrics (in ns)",
-		MaxAge:     120 * time.Minute, // default value * 6
-		AgeBuckets: 20,                // default value * 4
-		BufCap:     2000,              // default value * 4
-	})
 )
 
 func StartMetricsEndpoint(metricsPort int) {
@@ -78,9 +102,8 @@ func StartMetricsEndpoint(metricsPort int) {
 	}()
 }
 
-func CleanMetrics(nodes []Node, allEverKnownNodes []string) error {
-	start := time.Now()
-
+// TODO add cluster ones to be cleaned
+func CleanNodeMetrics(nodes []Node, allEverKnownNodes []string) {
 	for _, nodeSerializedString := range allEverKnownNodes {
 		n := strings.SplitN(nodeSerializedString, "|", 2) // [0]: name , [1] cluster
 
@@ -99,8 +122,16 @@ func CleanMetrics(nodes []Node, allEverKnownNodes []string) error {
 			KibanaNodeAvailabilityGauge.DeleteLabelValues(n[1], n[0])
 		}
 	}
+}
 
-	durationNanosec := float64(time.Since(start).Nanoseconds())
-	CleaningMetricsDurationSummary.Observe(durationNanosec)
-	return nil
+func CleanClusterMetrics(clusterName string, indexes []string) {
+	ClusterDurabilityDocumentsCount.DeleteLabelValues(clusterName)
+	ClusterErrorsCount.DeleteLabelValues(clusterName)
+	for _, index := range indexes {
+		IndexProbeStatus.DeleteLabelValues(clusterName, index)
+		ClusterSearchDocumentsHits.DeleteLabelValues(clusterName, index)
+		for _, operation := range []string{"count", "index", "get", "search", "delete"} {
+			ClusterLatencySummary.DeleteLabelValues(clusterName, index, operation)
+		}
+	}
 }

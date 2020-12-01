@@ -9,49 +9,16 @@ import (
 
 // Watcher manages the pool of S3 endpoints to monitor
 type Watcher struct {
-	elasticsearchConsulTag string
-	kibanaConsulTag        string
-	consulApi              string
-
-	consulPeriod   time.Duration
-	probePeriod    time.Duration
-	cleaningPeriod time.Duration
+	config *common.Config
 
 	elasticsearchClusters map[string](chan bool)
 	kibanaClusters        map[string](chan bool)
 }
 
 // NewWatcher creates a new watcher and prepare the consul client
-func NewWatcher(elasticsearchConsulTag, kibanaConsulTag, consulApi string, consulPeriod, cleaningPeriod, probePeriod time.Duration) Watcher {
-	log.Info("Discovering ES nodes for the first time")
-
-	log.Info("Initializing tickers")
-	if consulPeriod < 60*time.Second {
-		log.Warning("Refreshing discovery more than once a minute is not allowed, fallback to 60s")
-		consulPeriod = 60 * time.Second
-	}
-	log.Info("Discovery update interval: ", consulPeriod.String())
-
-	if probePeriod < 20*time.Second {
-		log.Warning("Probing elasticsearch nodes more than 3 times a minute is not allowed, fallback to 20s")
-		probePeriod = 20 * time.Second
-	}
-	log.Info("Probing interval: ", probePeriod.String())
-
-	if cleaningPeriod < 240*time.Second {
-		log.Warning("Cleaning Metrics faster than every 4 minutes is not allowed, fallback to 240s")
-		cleaningPeriod = 240 * time.Second
-	}
-	log.Info("Metrics pruning interval: ", cleaningPeriod.String())
-
+func NewWatcher(config *common.Config) Watcher {
 	return Watcher{
-		elasticsearchConsulTag: elasticsearchConsulTag,
-		kibanaConsulTag:        kibanaConsulTag,
-		consulApi:              consulApi,
-
-		consulPeriod:   consulPeriod,
-		probePeriod:    probePeriod,
-		cleaningPeriod: cleaningPeriod,
+		config: config,
 
 		elasticsearchClusters: make(map[string]chan bool),
 		kibanaClusters:        make(map[string]chan bool),
@@ -64,7 +31,7 @@ func (w *Watcher) WatchPools() error {
 
 	for {
 		// Elasticsearch service
-		esServicesFromConsul, err := common.GetServices(w.consulApi, w.elasticsearchConsulTag)
+		esServicesFromConsul, err := common.GetServices(w.config.ConsulApi, w.config.ElasticsearchConsulTag)
 		if err != nil {
 			return err
 		}
@@ -76,7 +43,7 @@ func (w *Watcher) WatchPools() error {
 		w.createNewEsProbes(esServicesToAdd)
 
 		// Kibana service
-		kibanaServicesFromConsul, err := common.GetServices(w.consulApi, w.kibanaConsulTag)
+		kibanaServicesFromConsul, err := common.GetServices(w.config.ConsulApi, w.config.KibanaConsulTag)
 		if err != nil {
 			return err
 		}
@@ -87,7 +54,7 @@ func (w *Watcher) WatchPools() error {
 		w.flushOldProbes(kibanaServicesToRemove, w.kibanaClusters)
 		w.createNewKibanaProbes(kibanaServicesToAdd)
 
-		time.Sleep(w.consulPeriod)
+		time.Sleep(w.config.ConsulPeriod)
 	}
 	return nil
 }
@@ -105,17 +72,24 @@ func (w *Watcher) createNewEsProbes(servicesToAdd map[string]common.Cluster) {
 	var probeChan chan bool
 	for cluster, clusterConfig := range servicesToAdd {
 		log.Printf("Creating new es probe for: %s", cluster)
+
+		endpoint, err := common.GetEndpointFromConsul(clusterConfig.Name, w.config.ConsulApi, w.config.ElasticsearchEndpointSuffix)
+		if err != nil {
+			log.Errorf("Could not generate endpoint from consul:", err)
+			continue
+		}
+
 		probeChan = make(chan bool)
-		esProbe, err := probe.NewEsProbe(cluster, w.consulApi, clusterConfig, w.consulPeriod, w.probePeriod, w.cleaningPeriod, probeChan)
+		esProbe, err := probe.NewEsProbe(cluster, endpoint, clusterConfig, w.config, probeChan)
 
 		if err != nil {
-			log.Println("Error while creating probe:", err)
+			log.Errorf("Error while creating probe:", err)
 			continue
 		}
 
 		err = esProbe.PrepareEsProbing()
 		if err != nil {
-			log.Println("Error while preparing probe:", err)
+			log.Errorf("Error while preparing probe:", err)
 			close(probeChan)
 			continue
 		}
@@ -129,7 +103,7 @@ func (w *Watcher) createNewKibanaProbes(servicesToAdd map[string]common.Cluster)
 	for cluster, clusterConfig := range servicesToAdd {
 		log.Printf("Creating new kibana probe for: %s", cluster)
 		probeChan = make(chan bool)
-		esProbe, err := probe.NewKibanaProbe(cluster, w.consulApi, clusterConfig, w.consulPeriod, w.probePeriod, w.cleaningPeriod, probeChan)
+		esProbe, err := probe.NewKibanaProbe(cluster, clusterConfig, w.config, probeChan)
 
 		if err != nil {
 			log.Println("Error while creating probe:", err)

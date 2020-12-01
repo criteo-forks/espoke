@@ -5,12 +5,11 @@ package common
 
 import (
 	"fmt"
+	"github.com/hashicorp/consul/api"
+	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 	"sort"
 	"strings"
-	"time"
-
-	"github.com/hashicorp/consul/api"
-	log "github.com/sirupsen/logrus"
 )
 
 func contains(a []string, x string) bool {
@@ -22,6 +21,7 @@ func contains(a []string, x string) bool {
 	return false
 }
 
+//TODO detect probe stuck
 func UpdateEverKnownNodes(allEverKnownNodes []string, nodes []Node) []string {
 	for _, node := range nodes {
 		// TODO: Replace by a real struct instead of a string concatenation...
@@ -57,9 +57,17 @@ func schemeFromTags(serviceTags []string) string {
 	return scheme
 }
 
-func DiscoverNodesForService(consulTarget string, serviceName string) ([]Node, error) {
-	start := time.Now()
+func versionFromTags(serviceTags []string) string {
+	for _, tag := range serviceTags {
+		splitted := strings.SplitN(tag, "-", 2)
+		if splitted[0] == "version" {
+			return splitted[1]
+		}
+	}
+	return ""
+}
 
+func DiscoverNodesForService(consulTarget string, serviceName string) ([]Node, error) {
 	consulConfig := api.DefaultConfig()
 	consulConfig.Address = consulTarget
 	consul, err := api.NewClient(consulConfig)
@@ -97,10 +105,8 @@ func DiscoverNodesForService(consulTarget string, serviceName string) ([]Node, e
 	}
 
 	nodesCount := len(nodeList)
-	NodeCount.Set(float64(nodesCount))
 	log.Debug(nodesCount, " nodes found")
 
-	ConsulDiscoveryDurationSummary.Observe(float64(time.Since(start).Nanoseconds()))
 	return nodeList, nil
 }
 
@@ -126,8 +132,9 @@ func GetServices(consulTarget string, consulTag string) (map[string]Cluster, err
 				_, ok := services[cluster]
 				if !ok {
 					service = Cluster{
-						Name:   serviceName,
-						Scheme: schemeFromTags(consulServices[serviceName]),
+						Name:    serviceName,
+						Scheme:  schemeFromTags(consulServices[serviceName]),
+						Version: versionFromTags(consulServices[serviceName]),
 					}
 					services[cluster] = service
 				}
@@ -136,4 +143,44 @@ func GetServices(consulTarget string, consulTag string) (map[string]Cluster, err
 		}
 	}
 	return services, nil
+}
+
+func GetEndpointFromConsul(name, consulTarget, endpointSuffix string) (string, error) {
+	endpoint := ""
+
+	consulConfig := api.DefaultConfig()
+	consulConfig.Address = consulTarget
+	consul, err := api.NewClient(consulConfig)
+	if err != nil {
+		log.Debug("Consul Connection failed: ", err.Error())
+		ErrorsCount.Inc()
+		return endpoint, err
+	}
+	health := consul.Health()
+	serviceEntries, _, _ := health.Service(name, "", false, nil)
+
+	port, err := getServicePort(serviceEntries)
+	if err != nil {
+		return endpoint, err
+	}
+	dc, err := getDatacenter(serviceEntries)
+	endpointSuffixWithDC := strings.ReplaceAll(endpointSuffix, "{dc}", dc)
+	endpoint = fmt.Sprintf("%s%s:%d", name, endpointSuffixWithDC, port)
+
+	return endpoint, nil
+}
+
+// getServicePort return the first port found in the service or 80
+func getServicePort(serviceEntries []*api.ServiceEntry) (int, error) {
+	if len(serviceEntries) == 0 {
+		return 80, errors.New("Consul service is empty")
+	}
+	return serviceEntries[0].Service.Port, nil
+}
+
+func getDatacenter(serviceEntries []*api.ServiceEntry) (string, error) {
+	if len(serviceEntries) == 0 {
+		return "", errors.New("Consul service is empty")
+	}
+	return serviceEntries[0].Node.Datacenter, nil
 }
