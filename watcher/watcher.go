@@ -3,6 +3,7 @@ package watcher
 import (
 	"github.com/criteo-forks/espoke/common"
 	"github.com/criteo-forks/espoke/probe"
+	"github.com/hashicorp/consul/api"
 	log "github.com/sirupsen/logrus"
 	"time"
 )
@@ -11,18 +12,26 @@ import (
 type Watcher struct {
 	config *common.Config
 
+	consulClient *api.Client
+
 	elasticsearchClusters map[string](chan bool)
 	kibanaClusters        map[string](chan bool)
 }
 
 // NewWatcher creates a new watcher and prepare the consul client
-func NewWatcher(config *common.Config) Watcher {
+func NewWatcher(config *common.Config) (Watcher, error) {
+	consulClient, err := common.NewClient(config.ConsulApi)
+	if err != nil {
+		return Watcher{}, err
+	}
 	return Watcher{
 		config: config,
 
+		consulClient: consulClient,
+
 		elasticsearchClusters: make(map[string]chan bool),
 		kibanaClusters:        make(map[string]chan bool),
-	}
+	}, nil
 }
 
 // WatchPools poll consul services with specified tag and create
@@ -31,7 +40,7 @@ func (w *Watcher) WatchPools() error {
 
 	for {
 		// Elasticsearch service
-		esServicesFromConsul, err := common.GetServices(w.config.ConsulApi, w.config.ElasticsearchConsulTag)
+		esServicesFromConsul, err := common.GetServices(w.consulClient, w.config.ElasticsearchConsulTag)
 		if err != nil {
 			return err
 		}
@@ -43,7 +52,7 @@ func (w *Watcher) WatchPools() error {
 		w.createNewEsProbes(esServicesToAdd)
 
 		// Kibana service
-		kibanaServicesFromConsul, err := common.GetServices(w.config.ConsulApi, w.config.KibanaConsulTag)
+		kibanaServicesFromConsul, err := common.GetServices(w.consulClient, w.config.KibanaConsulTag)
 		if err != nil {
 			return err
 		}
@@ -73,14 +82,14 @@ func (w *Watcher) createNewEsProbes(servicesToAdd map[string]common.Cluster) {
 	for cluster, clusterConfig := range servicesToAdd {
 		log.Printf("Creating new es probe for: %s", cluster)
 
-		endpoint, err := common.GetEndpointFromConsul(clusterConfig.Name, w.config.ConsulApi, w.config.ElasticsearchEndpointSuffix)
+		endpoint, err := common.GetEndpointFromConsul(w.consulClient, clusterConfig.Name, w.config.ElasticsearchEndpointSuffix)
 		if err != nil {
 			log.Errorf("Could not generate endpoint from consul:", err)
 			continue
 		}
 
 		probeChan = make(chan bool)
-		esProbe, err := probe.NewEsProbe(cluster, endpoint, clusterConfig, w.config, probeChan)
+		esProbe, err := probe.NewEsProbe(cluster, endpoint, clusterConfig, w.config, w.consulClient, probeChan)
 
 		if err != nil {
 			log.Errorf("Error while creating probe:", err)
@@ -103,7 +112,7 @@ func (w *Watcher) createNewKibanaProbes(servicesToAdd map[string]common.Cluster)
 	for cluster, clusterConfig := range servicesToAdd {
 		log.Printf("Creating new kibana probe for: %s", cluster)
 		probeChan = make(chan bool)
-		esProbe, err := probe.NewKibanaProbe(cluster, clusterConfig, w.config, probeChan)
+		esProbe, err := probe.NewKibanaProbe(cluster, clusterConfig, w.config, w.consulClient, probeChan)
 
 		if err != nil {
 			log.Println("Error while creating probe:", err)

@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"github.com/criteo-forks/espoke/common"
+	"github.com/hashicorp/consul/api"
 	"io/ioutil"
 	"net/http"
 	"sync"
@@ -18,7 +19,8 @@ import (
 type KibanaProbe struct {
 	clusterName   string
 	clusterConfig common.Cluster
-	consulApi     string
+
+	consulClient *api.Client
 
 	timeout time.Duration
 
@@ -81,9 +83,9 @@ func probeKibanaNode(node *common.Node, timeout time.Duration) error {
 	return nil
 }
 
-func NewKibanaProbe(clusterName string, clusterConfig common.Cluster, config *common.Config, controlChan chan bool) (KibanaProbe, error) {
+func NewKibanaProbe(clusterName string, clusterConfig common.Cluster, config *common.Config, consulClient *api.Client, controlChan chan bool) (KibanaProbe, error) {
 	var allEverKnownKibanaNodes []string
-	kibanaNodesList, err := common.DiscoverNodesForService(config.ConsulApi, clusterConfig.Name)
+	kibanaNodesList, err := common.DiscoverNodesForService(consulClient, clusterConfig.Name)
 	if err != nil {
 		common.ErrorsCount.Inc()
 		log.Fatal("Impossible to discover kibana nodes during bootstrap, exiting")
@@ -92,8 +94,9 @@ func NewKibanaProbe(clusterName string, clusterConfig common.Cluster, config *co
 
 	return KibanaProbe{
 		clusterName:   clusterName,
-		consulApi:     config.ConsulApi,
 		clusterConfig: clusterConfig,
+
+		consulClient: consulClient,
 
 		timeout: config.ProbePeriod - 2*time.Second,
 
@@ -126,7 +129,7 @@ func (kibana *KibanaProbe) StartKibanaProbing() error {
 		case <-kibana.updateDiscoveryTicker.C:
 			// Kibana
 			log.Debug("Starting updating Kibana nodes list")
-			kibanaUpdatedList, err := common.DiscoverNodesForService(kibana.consulApi, kibana.clusterConfig.Name)
+			kibanaUpdatedList, err := common.DiscoverNodesForService(kibana.consulClient, kibana.clusterConfig.Name)
 			if err != nil {
 				log.Error("Unable to update Kibana nodes, using last known state")
 				common.ErrorsCount.Inc()

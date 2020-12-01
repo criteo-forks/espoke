@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/criteo-forks/espoke/common"
+	"github.com/hashicorp/consul/api"
 	"github.com/pkg/errors"
 	"net/http"
 	"strconv"
@@ -43,6 +44,8 @@ type EsProbe struct {
 	config        *common.Config
 	client        *elasticsearch7.Client
 
+	consulClient *api.Client
+
 	timeout time.Duration
 
 	updateDiscoveryTicker *time.Ticker
@@ -55,69 +58,9 @@ type EsProbe struct {
 	controlChan chan bool
 }
 
-// TODO inc .ClusterErrorsCount.WithLabelValues(es.clusterName).Add(1)
-func probeElasticsearchNode(node *common.Node, timeout time.Duration, username, password string) error {
-	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-	client := &http.Client{
-		Timeout: timeout,
-	}
-
-	probingURL := fmt.Sprintf("%v://%v:%v/_cat/health?v", node.Scheme, node.Ip, node.Port)
-	log.Debug("Start probing ", node.Name)
-
-	start := time.Now()
-	req, err := http.NewRequest("GET", probingURL, nil)
-	req.SetBasicAuth(username, password)
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Debug("Probing failed for ", node.Name, ": ", probingURL, " ", err.Error())
-		log.Error(err)
-		common.ElasticNodeAvailabilityGauge.WithLabelValues(node.Cluster, node.Name).Set(0)
-		common.ErrorsCount.Inc()
-		return err
-	}
-	durationNanoSec := float64(time.Since(start).Nanoseconds())
-
-	log.Debug("Probe result for ", node.Name, ": ", resp.Status)
-	if resp.StatusCode != 200 {
-		log.Error("Probing failed for ", node.Name, ": ", probingURL, " ", resp.Status)
-		common.ElasticNodeAvailabilityGauge.WithLabelValues(node.Cluster, node.Name).Set(0)
-		common.ErrorsCount.Inc()
-		return fmt.Errorf("ES Probing failed")
-	}
-
-	common.ElasticNodeAvailabilityGauge.WithLabelValues(node.Cluster, node.Name).Set(1)
-	common.NodeCatLatencySummary.WithLabelValues(node.Cluster, node.Name).Observe(durationNanoSec)
-
-	return nil
-}
-
-func initEsClient(scheme, endpoint, username, passsword string) (*elasticsearch7.Client, error) {
-	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-
-	cfg := elasticsearch7.Config{
-		Addresses: []string{
-			fmt.Sprintf("%v://%v", scheme, endpoint),
-		},
-		Username: username,
-		Password: passsword,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true,
-			},
-		},
-	}
-	es, err := elasticsearch7.NewClient(cfg)
-	if err != nil {
-		log.Fatalf("Error creating the client: %s", err)
-		return nil, err
-	}
-	return es, nil
-}
-
-func NewEsProbe(clusterName, endpoint string, clusterConfig common.Cluster, config *common.Config, controlChan chan bool) (EsProbe, error) {
+func NewEsProbe(clusterName, endpoint string, clusterConfig common.Cluster, config *common.Config, consulClient *api.Client, controlChan chan bool) (EsProbe, error) {
 	var allEverKnownEsNodes []string
-	esNodesList, err := common.DiscoverNodesForService(config.ConsulApi, clusterConfig.Name)
+	esNodesList, err := common.DiscoverNodesForService(consulClient, clusterConfig.Name)
 	if err != nil {
 		common.ErrorsCount.Inc()
 		log.Fatal("Impossible to discover ES nodes during bootstrap, exiting")
@@ -134,6 +77,8 @@ func NewEsProbe(clusterName, endpoint string, clusterConfig common.Cluster, conf
 		clusterConfig: clusterConfig,
 		config:        config,
 		client:        client,
+
+		consulClient: consulClient,
 
 		timeout: config.ProbePeriod - 2*time.Second,
 
@@ -190,7 +135,7 @@ func (es *EsProbe) StartEsProbing() error {
 		case <-es.updateDiscoveryTicker.C:
 			// Elasticsearch
 			log.Debug("Starting updating ES nodes list")
-			updatedList, err := common.DiscoverNodesForService(es.config.ConsulApi, es.clusterConfig.Name)
+			updatedList, err := common.DiscoverNodesForService(es.consulClient, es.clusterConfig.Name)
 			if err != nil {
 				log.Error("Unable to update ES nodes, using last known state")
 				common.ErrorsCount.Inc()
@@ -281,6 +226,66 @@ func (es *EsProbe) StartEsProbing() error {
 			sem.Wait()
 		}
 	}
+}
+
+// TODO inc .ClusterErrorsCount.WithLabelValues(es.clusterName).Add(1)
+func probeElasticsearchNode(node *common.Node, timeout time.Duration, username, password string) error {
+	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	client := &http.Client{
+		Timeout: timeout,
+	}
+
+	probingURL := fmt.Sprintf("%v://%v:%v/_cat/health?v", node.Scheme, node.Ip, node.Port)
+	log.Debug("Start probing ", node.Name)
+
+	start := time.Now()
+	req, err := http.NewRequest("GET", probingURL, nil)
+	req.SetBasicAuth(username, password)
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Debug("Probing failed for ", node.Name, ": ", probingURL, " ", err.Error())
+		log.Error(err)
+		common.ElasticNodeAvailabilityGauge.WithLabelValues(node.Cluster, node.Name).Set(0)
+		common.ErrorsCount.Inc()
+		return err
+	}
+	durationNanoSec := float64(time.Since(start).Nanoseconds())
+
+	log.Debug("Probe result for ", node.Name, ": ", resp.Status)
+	if resp.StatusCode != 200 {
+		log.Error("Probing failed for ", node.Name, ": ", probingURL, " ", resp.Status)
+		common.ElasticNodeAvailabilityGauge.WithLabelValues(node.Cluster, node.Name).Set(0)
+		common.ErrorsCount.Inc()
+		return fmt.Errorf("ES Probing failed")
+	}
+
+	common.ElasticNodeAvailabilityGauge.WithLabelValues(node.Cluster, node.Name).Set(1)
+	common.NodeCatLatencySummary.WithLabelValues(node.Cluster, node.Name).Observe(durationNanoSec)
+
+	return nil
+}
+
+func initEsClient(scheme, endpoint, username, passsword string) (*elasticsearch7.Client, error) {
+	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+
+	cfg := elasticsearch7.Config{
+		Addresses: []string{
+			fmt.Sprintf("%v://%v", scheme, endpoint),
+		},
+		Username: username,
+		Password: passsword,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		},
+	}
+	es, err := elasticsearch7.NewClient(cfg)
+	if err != nil {
+		log.Fatalf("Error creating the client: %s", err)
+		return nil, err
+	}
+	return es, nil
 }
 
 func (es *EsProbe) deleteDocument(index, documentID string) error {

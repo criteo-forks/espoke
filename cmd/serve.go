@@ -71,6 +71,9 @@ func (r *ServeCmd) Run() error {
 		CleaningPeriod:              r.CleaningPeriod,
 	}
 
-	w := watcher.NewWatcher(config)
+	w, err:= watcher.NewWatcher(config)
+	if err != nil {
+		return err
+	}
 	return w.WatchPools()
 }
