@@ -170,12 +170,13 @@ func (es *EsProbe) StartEsProbing() error {
 			sem.Add(1)
 			go func() {
 				defer sem.Done()
-				number_of_current_durability_documents, durationNanoSec, err := es.countNumberOfDurabilityDocs()
+				number_of_current_durability_documents, durationMilliSec, err := es.countNumberOfDurabilityDocs()
 				if err != nil {
 					common.ClusterErrorsCount.WithLabelValues(es.clusterName).Add(1)
 					log.Error(err)
 				}
-				common.ClusterLatencySummary.WithLabelValues(es.clusterName, es.config.ElasticsearchDurabilityIndex, "count").Observe(durationNanoSec)
+				common.ClusterLatencySummary.WithLabelValues(es.clusterName, es.config.ElasticsearchDurabilityIndex, "count").Observe(durationMilliSec)
+				common.ClusterLatencyHistogram.WithLabelValues(es.clusterName, es.config.ElasticsearchDurabilityIndex, "count").Observe(durationMilliSec)
 				common.ClusterDurabilityDocumentsCount.WithLabelValues(es.clusterName).Set(number_of_current_durability_documents)
 
 				if err := es.searchDurabilityDocuments(); err != nil {
@@ -212,12 +213,13 @@ func (es *EsProbe) StartEsProbing() error {
 					Team:     "nosql",
 					Data:     DATA_ES_DOC,
 				}
-				durationNanoSec, err := es.indexDocument(es.config.ElasticsearchLatencyIndex, documentID, esDoc)
+				durationMilliSec, err := es.indexDocument(es.config.ElasticsearchLatencyIndex, documentID, esDoc)
 				if err != nil {
 					common.ClusterErrorsCount.WithLabelValues(es.clusterName).Add(1)
 					log.Error(err)
 				}
-				common.ClusterLatencySummary.WithLabelValues(es.clusterName, es.config.ElasticsearchLatencyIndex, "index").Observe(durationNanoSec)
+				common.ClusterLatencySummary.WithLabelValues(es.clusterName, es.config.ElasticsearchLatencyIndex, "index").Observe(durationMilliSec)
+				common.ClusterLatencyHistogram.WithLabelValues(es.clusterName, es.config.ElasticsearchDurabilityIndex, "index").Observe(durationMilliSec)
 
 				// Get event
 				if err := es.getDocument(es.config.ElasticsearchLatencyIndex, documentID); err != nil {
@@ -271,7 +273,7 @@ func probeElasticsearchNode(node *common.Node, timeout time.Duration, username, 
 		log.Debug("Probing failed for ", node.Name, ": ", probingURL, " ", err.Error())
 		return err
 	}
-	durationNanoSec := float64(time.Since(start).Nanoseconds())
+	durationMilliSec := float64(time.Since(start).Milliseconds())
 
 	log.Debug("Probe result for ", node.Name, ": ", resp.Status)
 	if resp.StatusCode != 200 {
@@ -280,7 +282,7 @@ func probeElasticsearchNode(node *common.Node, timeout time.Duration, username, 
 	}
 
 	common.ElasticNodeAvailabilityGauge.WithLabelValues(node.Cluster, node.Name).Set(1)
-	common.NodeCatLatencySummary.WithLabelValues(node.Cluster, node.Name).Observe(durationNanoSec)
+	common.NodeCatLatencySummary.WithLabelValues(node.Cluster, node.Name).Observe(durationMilliSec)
 
 	return nil
 }
@@ -313,7 +315,7 @@ func (es *EsProbe) deleteDocument(index, documentID string) error {
 	res, err := es.client.Delete(
 		index,
 		documentID)
-	durationNanoSec := float64(time.Since(start).Nanoseconds())
+	durationMilliSec := float64(time.Since(start).Milliseconds())
 
 	if err != nil {
 		return errors.Wrapf(err, "Failed to delete document %s on %s:%s", documentID, es.clusterName, index)
@@ -324,7 +326,9 @@ func (es *EsProbe) deleteDocument(index, documentID string) error {
 		return errors.Errorf("Error delete document %s on %s:%s: %s", documentID, es.clusterName, index, res.String())
 	}
 
-	common.ClusterLatencySummary.WithLabelValues(es.clusterName, index, "delete").Observe(durationNanoSec)
+	common.ClusterLatencySummary.WithLabelValues(es.clusterName, index, "delete").Observe(durationMilliSec)
+	common.ClusterLatencyHistogram.WithLabelValues(es.clusterName, index, "delete").Observe(durationMilliSec)
+
 	return nil
 }
 
@@ -333,7 +337,7 @@ func (es *EsProbe) getDocument(index, documentID string) error {
 	res, err := es.client.Get(
 		index,
 		documentID)
-	durationNanoSec := float64(time.Since(start).Nanoseconds())
+	durationMilliSec := float64(time.Since(start).Milliseconds())
 
 	if err != nil {
 		return errors.Wrapf(err, "Failed to get document %s on %s:%s", documentID, es.clusterName, index)
@@ -344,7 +348,9 @@ func (es *EsProbe) getDocument(index, documentID string) error {
 		return errors.Errorf("Error get document %s on %s:%s: %s", documentID, es.clusterName, index, res.String())
 	}
 
-	common.ClusterLatencySummary.WithLabelValues(es.clusterName, index, "get").Observe(durationNanoSec)
+	common.ClusterLatencySummary.WithLabelValues(es.clusterName, index, "get").Observe(durationMilliSec)
+	common.ClusterLatencyHistogram.WithLabelValues(es.clusterName, index, "get").Observe(durationMilliSec)
+
 	return nil
 }
 
@@ -354,7 +360,7 @@ func (es *EsProbe) countNumberOfDurabilityDocs() (float64, float64, error) {
 	res, err := es.client.Count(
 		es.client.Count.WithIndex(es.config.ElasticsearchDurabilityIndex),
 	)
-	durationNanoSec := float64(time.Since(start).Nanoseconds())
+	durationMilliSec := float64(time.Since(start).Milliseconds())
 
 	if err != nil {
 		return 0, 0, err
@@ -373,7 +379,7 @@ func (es *EsProbe) countNumberOfDurabilityDocs() (float64, float64, error) {
 	if !ok {
 		return 0, 0, errors.Errorf("Durability response count doesn't contains count field")
 	}
-	return number_of_current_durability_documents, durationNanoSec, nil
+	return number_of_current_durability_documents, durationMilliSec, nil
 }
 
 func (es *EsProbe) indexDurabilityDocuments(number_of_current_durability_documents float64) error {
@@ -409,7 +415,7 @@ func (es *EsProbe) indexDocument(index, documentID string, esDoc *EsDocument) (f
 		bytes.NewReader(jsonDoc),
 		es.client.Index.WithDocumentID(documentID),
 	)
-	durationNanoSec := float64(time.Since(start).Nanoseconds())
+	durationMilliSec := float64(time.Since(start).Milliseconds())
 
 	if err != nil {
 		return 0, errors.Wrapf(err, "Failed to index document in %s:%s %d", es.clusterName, index)
@@ -419,7 +425,7 @@ func (es *EsProbe) indexDocument(index, documentID string, esDoc *EsDocument) (f
 	if res.IsError() {
 		return 0, errors.Errorf("Document index creation failed in %s:%s: %s", es.clusterName, index, res.String())
 	}
-	return durationNanoSec, nil
+	return durationMilliSec, nil
 }
 
 func (es *EsProbe) createMissingIndex(index string) error {
@@ -467,7 +473,7 @@ func (es *EsProbe) searchDurabilityDocuments() error {
 		es.client.Search.WithBody(&buf),
 		es.client.Search.WithTrackTotalHits(true),
 	)
-	durationNanoSec := float64(time.Since(start).Nanoseconds())
+	durationMilliSec := float64(time.Since(start).Milliseconds())
 
 	if err != nil {
 		return errors.Wrapf(err, "Error searching documents on durability index")
@@ -505,7 +511,9 @@ func (es *EsProbe) searchDurabilityDocuments() error {
 		}
 	}
 
-	common.ClusterLatencySummary.WithLabelValues(es.clusterName, es.config.ElasticsearchDurabilityIndex, "search").Observe(durationNanoSec)
+	common.ClusterLatencySummary.WithLabelValues(es.clusterName, es.config.ElasticsearchDurabilityIndex, "search").Observe(durationMilliSec)
+	common.ClusterLatencyHistogram.WithLabelValues(es.clusterName, es.config.ElasticsearchDurabilityIndex, "search").Observe(durationMilliSec)
+
 	common.ClusterSearchDocumentsHits.WithLabelValues(es.clusterName, es.config.ElasticsearchDurabilityIndex).Set(total)
 	return nil
 }

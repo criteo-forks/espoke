@@ -40,11 +40,20 @@ var (
 
 	ClusterLatencySummary = promauto.NewSummaryVec(
 		prometheus.SummaryOpts{
-			Name:       "es_cluster_latency",
+			Name:       "es_cluster_latency_ms",
 			Help:       "Measure latency to do operation",
 			MaxAge:     20 * time.Minute, // default value * 2
 			AgeBuckets: 20,               // default value * 4
 			BufCap:     2000,             // default value * 4
+		},
+		[]string{"cluster", "index", "operation"},
+	)
+
+	ClusterLatencyHistogram = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "es_cluster_latency_histogram_ms",
+			Help:    "Measure latency to do operation",
+			Buckets: []float64{1, 2.5, 5, 7.5, 10, 15, 20, 35, 50, 75, 100, 250, 500, 1000, 5000, 10000},
 		},
 		[]string{"cluster", "index", "operation"},
 	)
@@ -127,6 +136,7 @@ func CleanClusterMetrics(clusterName string, indexes []string) {
 		ClusterSearchDocumentsHits.DeleteLabelValues(clusterName, index)
 		for _, operation := range []string{"count", "index", "get", "search", "delete"} {
 			ClusterLatencySummary.DeleteLabelValues(clusterName, index, operation)
+			ClusterLatencyHistogram.DeleteLabelValues(clusterName, index, operation)
 		}
 	}
 }
