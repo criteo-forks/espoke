@@ -18,13 +18,16 @@ type Cluster struct {
 }
 
 type Config struct {
-	ElasticsearchConsulTag      string
-	ElasticsearchEndpointSuffix string
-	ElasticsearchUser           string
-	ElasticsearchPassword       string
-	KibanaConsulTag             string
-	ConsulApi                   string
-	ConsulPeriod                time.Duration
-	ProbePeriod                 time.Duration
-	CleaningPeriod              time.Duration
+	ElasticsearchConsulTag                   string
+	ElasticsearchEndpointSuffix              string
+	ElasticsearchUser                        string
+	ElasticsearchPassword                    string
+	ElasticsearchDurabilityIndex             string
+	ElasticsearchLatencyIndex                string
+	ElasticsearchNumberOfDurabilityDocuments int
+	KibanaConsulTag                          string
+	ConsulApi                                string
+	ConsulPeriod                             time.Duration
+	ProbePeriod                              time.Duration
+	CleaningPeriod                           time.Duration
 }

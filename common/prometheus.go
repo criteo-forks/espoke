@@ -61,25 +61,20 @@ var (
 		Help: "Reports Espoke internal errors absolute counter since start",
 	})
 
-	NodeCount = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "es_node_count",
-		Help: "Reports current discovered nodes amount",
-	})
-
 	ElasticNodeAvailabilityGauge = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "es_node_availability",
-			Help: "Reflects node availabity : 1 is OK, 0 means node unavailable ",
+			Help: "Reflects elasticsearch node availability : 1 is OK, 0 means node unavailable ",
 		},
-		[]string{"cluster", "nodename"},
+		[]string{"cluster", "node_name"},
 	)
 
 	KibanaNodeAvailabilityGauge = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "kibana_node_availability",
-			Help: "Reflects node availabity : 1 is OK, 0 means node unavailable ",
+			Help: "Reflects kibana node availability : 1 is OK, 0 means node unavailable ",
 		},
-		[]string{"cluster", "nodename"},
+		[]string{"cluster", "node_name"},
 	)
 
 	NodeCatLatencySummary = promauto.NewSummaryVec(
@@ -90,7 +85,7 @@ var (
 			AgeBuckets: 20,               // default value * 4
 			BufCap:     2000,             // default value * 4
 		},
-		[]string{"cluster", "nodename"},
+		[]string{"cluster", "node_name"},
 	)
 )
 

@@ -50,7 +50,7 @@ func DiscoverNodesForService(consul *api.Client, serviceName string) ([]Node, er
 
 	var nodeList []Node
 	for _, svc := range catalogServices {
-		var addr string = svc.Address
+		var addr = svc.Address
 		if svc.ServiceAddress != "" {
 			addr = svc.ServiceAddress
 		}
@@ -61,7 +61,7 @@ func DiscoverNodesForService(consul *api.Client, serviceName string) ([]Node, er
 			Ip:      addr,
 			Port:    svc.ServicePort,
 			Scheme:  schemeFromTags(svc.ServiceTags),
-			Cluster: clusterNameFromTags(svc.ServiceTags),
+			Cluster: valueFromTags("cluster_name", svc.ServiceTags),
 		})
 	}
 
@@ -72,7 +72,10 @@ func DiscoverNodesForService(consul *api.Client, serviceName string) ([]Node, er
 }
 
 func GetServices(consul *api.Client, consulTag string) (map[string]Cluster, error) {
-	consulServices, _, _ := consul.Catalog().Services(nil)
+	consulServices, _, err := consul.Catalog().Services(nil)
+	if err != nil {
+		return nil, errors.Wrapf(err, "Failed to get services from consul")
+	}
 
 	var services = make(map[string]Cluster)
 	var service Cluster
@@ -80,14 +83,14 @@ func GetServices(consul *api.Client, consulTag string) (map[string]Cluster, erro
 		for i := range consulServices[serviceName] {
 			if consulServices[serviceName][i] == consulTag {
 				// Check cluster not already added
-				cluster := clusterNameFromTags(consulServices[serviceName])
+				cluster := valueFromTags("cluster_name", consulServices[serviceName])
 				// TODO ensure we use https when available?
 				_, ok := services[cluster]
 				if !ok {
 					service = Cluster{
 						Name:    serviceName,
 						Scheme:  schemeFromTags(consulServices[serviceName]),
-						Version: versionFromTags(consulServices[serviceName]),
+						Version: valueFromTags("version", consulServices[serviceName]),
 					}
 					services[cluster] = service
 				}
@@ -130,10 +133,10 @@ func getDatacenter(serviceEntries []*api.ServiceEntry) (string, error) {
 	return serviceEntries[0].Node.Datacenter, nil
 }
 
-func clusterNameFromTags(serviceTags []string) string {
+func valueFromTags(prefix string, serviceTags []string) string {
 	for _, tag := range serviceTags {
 		splitted := strings.SplitN(tag, "-", 2)
-		if splitted[0] == "cluster_name" {
+		if splitted[0] == prefix {
 			return splitted[1]
 		}
 	}
@@ -150,16 +153,6 @@ func schemeFromTags(serviceTags []string) string {
 	}
 
 	return scheme
-}
-
-func versionFromTags(serviceTags []string) string {
-	for _, tag := range serviceTags {
-		splitted := strings.SplitN(tag, "-", 2)
-		if splitted[0] == "version" {
-			return splitted[1]
-		}
-	}
-	return ""
 }
 
 func contains(a []string, x string) bool {

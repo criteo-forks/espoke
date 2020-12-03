@@ -13,17 +13,20 @@ import (
 )
 
 type ServeCmd struct {
-	ConsulApi                   string        `default:"127.0.0.1:8500" help:"127.0.0.1:8500" "consul target api host:port" yaml:"consul_api" short:"a"`
-	ConsulPeriod                time.Duration `default:"120s" help:"nodes discovery update interval" yaml:"consul_period"`
-	ProbePeriod                 time.Duration `default:"30s" help:"elasticsearch nodes probing interval" yaml:"probe_period"`
-	CleaningPeriod              time.Duration `default:"600s" help:"prometheus metrics cleaning interval (for vanished nodes)" yaml:"cleaning_period"`
-	ElasticsearchConsulTag      string        `default:"maintenance-elasticsearch" help:"elasticsearch consul tag" yaml:"elasticsearch_consul_service"`
-	ElasticsearchEndpointSuffix string        `default:".service.{dc}.foo.bar" help:"Suffix to add after the consul service name to create a valid domain name" yaml:"elasticsearch_endpoint_suffix"`
-	ElasticsearchUser           string        `help:"Elasticsearch username" yaml:"elasticsearch_user"`
-	ElasticsearchPassword       string        `help:"Elasticsearch password" yaml:"elasticsearch_password"`
-	KibanaConsulTag             string        `default:"kibana" help:"maintenance-kibana consul tag" yaml:"kibana_consul_service"`
-	MetricsPort                 int           `default:"2112" help:"port where prometheus will expose metrics to" yaml:"metrics_port" short:"p"`
-	LogLevel                    string        `default:"info" help:"log level" yaml:"log_level" short:"l"`
+	ConsulApi                                string        `default:"127.0.0.1:8500" help:"127.0.0.1:8500" help:"consul target api host:port" short:"a"`
+	ConsulPeriod                             time.Duration `default:"120s" help:"nodes discovery update interval"`
+	ProbePeriod                              time.Duration `default:"30s" help:"elasticsearch nodes probing interval"`
+	CleaningPeriod                           time.Duration `default:"600s" help:"prometheus metrics cleaning interval (for vanished nodes)"`
+	ElasticsearchConsulTag                   string        `default:"maintenance-elasticsearch" help:"elasticsearch consul tag"`
+	ElasticsearchEndpointSuffix              string        `default:".service.{dc}.foo.bar" help:"Suffix to add after the consul service name to create a valid domain name"`
+	ElasticsearchUser                        string        `help:"Elasticsearch username"`
+	ElasticsearchPassword                    string        `help:"Elasticsearch password"`
+	ElasticsearchDurabilityIndex             string        `default:".espoke.durability" help:"Elasticsearch durability index"`
+	ElasticsearchLatencyIndex                string        `default:".espoke.latency" help:"Elasticsearch latency index"`
+	ElasticsearchNumberOfDurabilityDocuments int           `default:"100000" help:"Number of documents to stored in the durability index"`
+	KibanaConsulTag                          string        `default:"kibana" help:"maintenance-kibana consul tag"`
+	MetricsPort                              int           `default:"2112" help:"port where prometheus will expose metrics to" short:"p"`
+	LogLevel                                 string        `default:"info" help:"log level" yaml:"log_level" short:"l"`
 }
 
 func (r *ServeCmd) Run() error {
@@ -60,18 +63,21 @@ func (r *ServeCmd) Run() error {
 	log.Info("Metrics pruning interval: ", r.CleaningPeriod.String())
 
 	config := &common.Config{
-		ElasticsearchConsulTag:      r.ElasticsearchConsulTag,
-		ElasticsearchEndpointSuffix: r.ElasticsearchEndpointSuffix,
-		ElasticsearchUser:           r.ElasticsearchUser,
-		ElasticsearchPassword:       r.ElasticsearchPassword,
-		KibanaConsulTag:             r.KibanaConsulTag,
-		ConsulApi:                   r.ConsulApi,
-		ConsulPeriod:                r.ConsulPeriod,
-		ProbePeriod:                 r.ProbePeriod,
-		CleaningPeriod:              r.CleaningPeriod,
+		ElasticsearchConsulTag:                   r.ElasticsearchConsulTag,
+		ElasticsearchEndpointSuffix:              r.ElasticsearchEndpointSuffix,
+		ElasticsearchUser:                        r.ElasticsearchUser,
+		ElasticsearchPassword:                    r.ElasticsearchPassword,
+		ElasticsearchDurabilityIndex:             r.ElasticsearchDurabilityIndex,
+		ElasticsearchLatencyIndex:                r.ElasticsearchLatencyIndex,
+		ElasticsearchNumberOfDurabilityDocuments: r.ElasticsearchNumberOfDurabilityDocuments,
+		KibanaConsulTag:                          r.KibanaConsulTag,
+		ConsulApi:                                r.ConsulApi,
+		ConsulPeriod:                             r.ConsulPeriod,
+		ProbePeriod:                              r.ProbePeriod,
+		CleaningPeriod:                           r.CleaningPeriod,
 	}
 
-	w, err:= watcher.NewWatcher(config)
+	w, err := watcher.NewWatcher(config)
 	if err != nil {
 		return err
 	}

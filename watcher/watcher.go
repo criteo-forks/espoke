@@ -37,12 +37,12 @@ func NewWatcher(config *common.Config) (Watcher, error) {
 // WatchPools poll consul services with specified tag and create
 // probe gorountines
 func (w *Watcher) WatchPools() error {
-
 	for {
 		// Elasticsearch service
 		esServicesFromConsul, err := common.GetServices(w.consulClient, w.config.ElasticsearchConsulTag)
 		if err != nil {
-			return err
+			log.Error(err)
+			common.ErrorsCount.Inc()
 		}
 
 		esWatchedServices := w.getWatchedServices(w.elasticsearchClusters)
@@ -54,7 +54,8 @@ func (w *Watcher) WatchPools() error {
 		// Kibana service
 		kibanaServicesFromConsul, err := common.GetServices(w.consulClient, w.config.KibanaConsulTag)
 		if err != nil {
-			return err
+			log.Error(err)
+			common.ErrorsCount.Inc()
 		}
 
 		kibanaWatchedServices := w.getWatchedServices(w.kibanaClusters)
@@ -65,13 +66,12 @@ func (w *Watcher) WatchPools() error {
 
 		time.Sleep(w.config.ConsulPeriod)
 	}
-	return nil
 }
 
 func (w *Watcher) getWatchedServices(watchedClusters map[string](chan bool)) []string {
-	currentServices := []string{}
+	var currentServices []string
 
-	for k, _ := range watchedClusters {
+	for k := range watchedClusters {
 		currentServices = append(currentServices, k)
 	}
 	return currentServices
@@ -85,6 +85,7 @@ func (w *Watcher) createNewEsProbes(servicesToAdd map[string]common.Cluster) {
 		endpoint, err := common.GetEndpointFromConsul(w.consulClient, clusterConfig.Name, w.config.ElasticsearchEndpointSuffix)
 		if err != nil {
 			log.Errorf("Could not generate endpoint from consul:", err)
+			common.ErrorsCount.Inc()
 			continue
 		}
 
@@ -93,12 +94,14 @@ func (w *Watcher) createNewEsProbes(servicesToAdd map[string]common.Cluster) {
 
 		if err != nil {
 			log.Errorf("Error while creating probe:", err)
+			common.ErrorsCount.Inc()
 			continue
 		}
 
 		err = esProbe.PrepareEsProbing()
 		if err != nil {
 			log.Errorf("Error while preparing probe:", err)
+			common.ErrorsCount.Inc()
 			close(probeChan)
 			continue
 		}
@@ -115,7 +118,8 @@ func (w *Watcher) createNewKibanaProbes(servicesToAdd map[string]common.Cluster)
 		esProbe, err := probe.NewKibanaProbe(cluster, clusterConfig, w.config, w.consulClient, probeChan)
 
 		if err != nil {
-			log.Println("Error while creating probe:", err)
+			log.Error(err)
+			common.ErrorsCount.Inc()
 			continue
 		}
 
@@ -127,7 +131,7 @@ func (w *Watcher) flushOldProbes(servicesToRemove []string, watchedClusters map[
 	var ok bool
 	var probeChan chan bool
 	for _, name := range servicesToRemove {
-		log.Printf("Removing old probe for: %s", name)
+		log.Infof("Removing old probe for: %s", name)
 		probeChan, ok = watchedClusters[name]
 		if ok {
 			delete(watchedClusters, name)

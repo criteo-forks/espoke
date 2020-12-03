@@ -46,35 +46,27 @@ func probeKibanaNode(node *common.Node, timeout time.Duration) error {
 	resp, err := client.Get(probingURL)
 	if err != nil {
 		log.Debug("Probing failed for ", node.Name, ": ", probingURL, " ", err.Error())
-		log.Error(err)
-		common.KibanaNodeAvailabilityGauge.WithLabelValues(node.Cluster, node.Name).Set(0)
-		common.ErrorsCount.Inc()
 		return err
 	}
 
 	log.Debug("Probe result for ", node.Name, ": ", resp.Status)
 	if resp.StatusCode != 200 {
 		log.Error("Probing failed for ", node.Name, ": ", probingURL, " ", resp.Status)
-		common.KibanaNodeAvailabilityGauge.WithLabelValues(node.Cluster, node.Name).Set(0)
-		common.ErrorsCount.Inc()
 		return fmt.Errorf("kibana Probing failed")
 	}
 
 	body, readErr := ioutil.ReadAll(resp.Body)
 	if readErr != nil {
-		common.KibanaNodeAvailabilityGauge.WithLabelValues(node.Cluster, node.Name).Set(0)
 		return fmt.Errorf("kibana Probing failed: %s", readErr)
 	}
 
 	var p fastjson.Parser
 	json, jsonErr := p.Parse(string(body))
 	if jsonErr != nil {
-		common.KibanaNodeAvailabilityGauge.WithLabelValues(node.Cluster, node.Name).Set(0)
 		return fmt.Errorf("kibana Probing failed: %s", jsonErr)
 	}
 	nodeState := string(json.GetStringBytes("status", "overall", "state"))
 	if nodeState != "green" {
-		common.KibanaNodeAvailabilityGauge.WithLabelValues(node.Cluster, node.Name).Set(0)
 		return fmt.Errorf("kibana Probing failed: node not in a green/healthy state")
 	}
 
@@ -148,7 +140,11 @@ func (kibana *KibanaProbe) StartKibanaProbing() error {
 				sem.Add(1)
 				go func(kibanaNode common.Node) {
 					defer sem.Done()
-					probeKibanaNode(&kibanaNode, kibana.timeout)
+					if err := probeKibanaNode(&kibanaNode, kibana.timeout); err != nil {
+						log.Error(err)
+						common.KibanaNodeAvailabilityGauge.WithLabelValues(kibanaNode.Cluster, kibanaNode.Name).Set(0)
+						common.ErrorsCount.Inc()
+					}
 				}(node)
 
 			}
