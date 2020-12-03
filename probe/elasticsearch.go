@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/criteo-forks/espoke/common"
+	"github.com/google/uuid"
 	"github.com/hashicorp/consul/api"
 	"github.com/pkg/errors"
 	"net/http"
@@ -26,6 +27,8 @@ var (
 		"depending on the nature of a document, a kilobyte can hold about half of a page of text, while a megabyte " +
 		"holds about 500 pages of text."
 )
+
+const millisecondInMinute = 60_000
 
 type EsDocument struct {
 	Name     string
@@ -45,9 +48,11 @@ type EsProbe struct {
 
 	timeout time.Duration
 
-	updateDiscoveryTicker *time.Ticker
-	cleanMetricsTicker    *time.Ticker
-	executeProbingTicker  *time.Ticker
+	updateDiscoveryTicker                 *time.Ticker
+	cleanMetricsTicker                    *time.Ticker
+	executeClusterDurabilityProbingTicker *time.Ticker
+	executeClusterLatencyProbingTicker    *time.Ticker
+	executeNodeProbingTicker              *time.Ticker
 
 	esNodesList         []common.Node
 	allEverKnownEsNodes []string
@@ -78,9 +83,11 @@ func NewEsProbe(clusterName, endpoint string, clusterConfig common.Cluster, conf
 
 		timeout: config.ProbePeriod - 2*time.Second,
 
-		updateDiscoveryTicker: time.NewTicker(config.ConsulPeriod),
-		executeProbingTicker:  time.NewTicker(config.ProbePeriod),
-		cleanMetricsTicker:    time.NewTicker(config.CleaningPeriod),
+		updateDiscoveryTicker:                 time.NewTicker(config.ConsulPeriod),
+		executeClusterDurabilityProbingTicker: time.NewTicker(config.ProbePeriod),
+		executeClusterLatencyProbingTicker:    time.NewTicker(time.Duration(millisecondInMinute/config.LatencyProbeRatePerMin) * time.Millisecond),
+		executeNodeProbingTicker:              time.NewTicker(config.ProbePeriod),
+		cleanMetricsTicker:                    time.NewTicker(config.CleaningPeriod),
 
 		esNodesList:         esNodesList,
 		allEverKnownEsNodes: allEverKnownEsNodes,
@@ -116,21 +123,24 @@ func (es *EsProbe) StartEsProbing() error {
 	for {
 		select {
 		case <-es.controlChan:
-			log.Println("Terminating es probe on ", es.clusterName)
+			log.Infof("Terminating es probe on ", es.clusterName)
 			es.cleanMetricsTicker.Stop()
 			es.updateDiscoveryTicker.Stop()
-			es.executeProbingTicker.Stop()
+			es.executeClusterDurabilityProbingTicker.Stop()
+			es.executeClusterLatencyProbingTicker.Stop()
+			es.executeNodeProbingTicker.Stop()
 			common.CleanNodeMetrics(es.esNodesList, es.allEverKnownEsNodes)
 			common.CleanClusterMetrics(es.clusterName, []string{es.config.ElasticsearchDurabilityIndex, es.config.ElasticsearchLatencyIndex})
 			return nil
 
 		case <-es.cleanMetricsTicker.C:
-			log.Info("Cleaning Prometheus metrics for unreferenced nodes")
+			//TODO move this to the update node and only remove the node deleted
+			log.Infof("Cleaning Prometheus metrics for unreferenced nodes for cluster %s", es.clusterName)
 			common.CleanNodeMetrics(es.esNodesList, es.allEverKnownEsNodes)
 
 		case <-es.updateDiscoveryTicker.C:
 			// Elasticsearch
-			log.Debug("Starting updating ES nodes list")
+			log.Infof("Starting updating ES nodes list %s", es.clusterName)
 			updatedList, err := common.DiscoverNodesForService(es.consulClient, es.clusterConfig.Name)
 			if err != nil {
 				log.Error("Unable to update ES nodes, using last known state:", err)
@@ -142,9 +152,9 @@ func (es *EsProbe) StartEsProbing() error {
 			es.allEverKnownEsNodes = common.UpdateEverKnownNodes(es.allEverKnownEsNodes, updatedList)
 			es.esNodesList = updatedList
 
-		case <-es.executeProbingTicker.C:
+		case <-es.executeClusterDurabilityProbingTicker.C:
 			sem := new(sync.WaitGroup)
-			log.Debugf("Starting probing ES cluster %s", es.clusterName)
+			log.Infof("Starting probing durability cluster %s", es.clusterName)
 			// Send index state green=> 0, yellow=>...
 			sem.Add(1)
 			// Check index status
@@ -154,12 +164,9 @@ func (es *EsProbe) StartEsProbing() error {
 					log.Error(err)
 					common.ClusterErrorsCount.WithLabelValues(es.clusterName).Add(1)
 				}
-				if err := es.setIndexStatus(es.config.ElasticsearchLatencyIndex); err != nil {
-					log.Error(err)
-					common.ClusterErrorsCount.WithLabelValues(es.clusterName).Add(1)
-				}
 			}()
 			// Durability check
+			// TODO read documents and compare to expected values
 			sem.Add(1)
 			go func() {
 				defer sem.Done()
@@ -176,13 +183,28 @@ func (es *EsProbe) StartEsProbing() error {
 					log.Error(err)
 				}
 			}()
+			sem.Wait()
+		case <-es.executeClusterLatencyProbingTicker.C:
+			sem := new(sync.WaitGroup)
+			log.Debugf("Starting probing latency cluster %s", es.clusterName)
+			// Send index state green=> 0, yellow=>...
+			sem.Add(1)
+			// Check index status
+			go func() {
+				defer sem.Done()
+				if err := es.setIndexStatus(es.config.ElasticsearchLatencyIndex); err != nil {
+					log.Error(err)
+					common.ClusterErrorsCount.WithLabelValues(es.clusterName).Add(1)
+				}
+			}()
 			// TODO later search check -> move it to a special tick to do it more often
 			// Ingestion/Get/Delete latency
 			sem.Add(1)
 			go func() {
 				defer sem.Done()
-				// Send event
-				documentID := "search-document-1"
+				// Set event
+				uuid := uuid.New()
+				documentID := fmt.Sprintf("search-document-%s", uuid)
 				esDoc := &EsDocument{
 					Name:     documentID,
 					Counter:  1,
@@ -209,8 +231,10 @@ func (es *EsProbe) StartEsProbing() error {
 					log.Error(err)
 				}
 			}()
-
-			log.Debug("Starting probing ES nodes")
+			sem.Wait()
+		case <-es.executeNodeProbingTicker.C:
+			sem := new(sync.WaitGroup)
+			log.Infof("Starting probing ES nodes for cluster %s", es.clusterName)
 			for _, node := range es.esNodesList {
 				sem.Add(1)
 				go func(esNode common.Node) {

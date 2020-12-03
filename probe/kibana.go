@@ -141,7 +141,7 @@ func (kibana *KibanaProbe) StartKibanaProbing() error {
 				go func(kibanaNode common.Node) {
 					defer sem.Done()
 					if err := probeKibanaNode(&kibanaNode, kibana.timeout); err != nil {
-						log.Error(err)
+						log.Errorf("Failed on %s: %s", kibana.clusterName, err.Error())
 						common.KibanaNodeAvailabilityGauge.WithLabelValues(kibanaNode.Cluster, kibanaNode.Name).Set(0)
 						common.ErrorsCount.Inc()
 					}

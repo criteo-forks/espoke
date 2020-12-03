@@ -84,7 +84,7 @@ func (w *Watcher) createNewEsProbes(servicesToAdd map[string]common.Cluster) {
 
 		endpoint, err := common.GetEndpointFromConsul(w.consulClient, clusterConfig.Name, w.config.ElasticsearchEndpointSuffix)
 		if err != nil {
-			log.Errorf("Could not generate endpoint from consul:", err)
+			log.Errorf("Could not generate endpoint from consul: %s", err.Error())
 			common.ErrorsCount.Inc()
 			continue
 		}
@@ -93,14 +93,14 @@ func (w *Watcher) createNewEsProbes(servicesToAdd map[string]common.Cluster) {
 		esProbe, err := probe.NewEsProbe(cluster, endpoint, clusterConfig, w.config, w.consulClient, probeChan)
 
 		if err != nil {
-			log.Errorf("Error while creating probe:", err)
+			log.Errorf("Error while creating probe: %s", err.Error())
 			common.ErrorsCount.Inc()
 			continue
 		}
 
 		err = esProbe.PrepareEsProbing()
 		if err != nil {
-			log.Errorf("Error while preparing probe:", err)
+			log.Errorf("Error while preparing probe: %s", err.Error())
 			common.ErrorsCount.Inc()
 			close(probeChan)
 			continue

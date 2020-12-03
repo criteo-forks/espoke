@@ -25,6 +25,7 @@ type Config struct {
 	ElasticsearchDurabilityIndex             string
 	ElasticsearchLatencyIndex                string
 	ElasticsearchNumberOfDurabilityDocuments int
+	LatencyProbeRatePerMin                   int
 	KibanaConsulTag                          string
 	ConsulApi                                string
 	ConsulPeriod                             time.Duration
