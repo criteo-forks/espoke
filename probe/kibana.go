@@ -115,12 +115,12 @@ func (kibana *KibanaProbe) StartKibanaProbing() error {
 			return nil
 
 		case <-kibana.cleanMetricsTicker.C:
-			log.Info("Cleaning Prometheus metrics for unreferenced nodes")
+			log.Infof("Cleaning Prometheus metrics for unreferenced nodes on cluster %s", kibana.clusterName)
 			common.CleanNodeMetrics(kibana.kibanaNodesList, kibana.allEverKnownKibanaNodes)
 
 		case <-kibana.updateDiscoveryTicker.C:
 			// Kibana
-			log.Debug("Starting updating Kibana nodes list")
+			log.Debugf("Starting updating Kibana nodes list on cluster %s", kibana.clusterName)
 			kibanaUpdatedList, err := common.DiscoverNodesForService(kibana.consulClient, kibana.clusterConfig.Name)
 			if err != nil {
 				log.Error("Unable to update Kibana nodes, using last known state")
@@ -128,12 +128,12 @@ func (kibana *KibanaProbe) StartKibanaProbing() error {
 				continue
 			}
 
-			log.Info("Updating kibana nodes list")
+			log.Infof("Updating kibana nodes list on cluster %s", kibana.clusterName)
 			kibana.allEverKnownKibanaNodes = common.UpdateEverKnownNodes(kibana.allEverKnownKibanaNodes, kibanaUpdatedList)
 			kibana.kibanaNodesList = kibanaUpdatedList
 
 		case <-kibana.executeProbingTicker.C:
-			log.Debug("Starting probing Kibana nodes")
+			log.Debugf("Starting probing Kibana nodes on cluster %s", kibana.clusterName)
 
 			sem := new(sync.WaitGroup)
 			for _, node := range kibana.kibanaNodesList {

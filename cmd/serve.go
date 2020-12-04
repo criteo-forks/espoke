@@ -25,7 +25,7 @@ type ServeCmd struct {
 	ElasticsearchLatencyIndex                string        `default:".espoke.latency" help:"Elasticsearch latency index"`
 	ElasticsearchNumberOfDurabilityDocuments int           `default:"100000" help:"Number of documents to stored in the durability index"`
 	LatencyProbeRatePerMin                   int           `default:"120" help:"Rate of probing per minute (how many checks are done in a minute)"`
-	KibanaConsulTag                          string        `default:"kibana" help:"maintenance-kibana consul tag"`
+	KibanaConsulTag                          string        `default:"maintenance-kibana" help:"kibana consul tag"`
 	MetricsPort                              int           `default:"2112" help:"port where prometheus will expose metrics to" short:"p"`
 	LogLevel                                 string        `default:"info" help:"log level" yaml:"log_level" short:"l"`
 }

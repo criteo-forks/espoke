@@ -123,7 +123,7 @@ func (es *EsProbe) StartEsProbing() error {
 	for {
 		select {
 		case <-es.controlChan:
-			log.Infof("Terminating es probe on ", es.clusterName)
+			log.Infof("Terminating es probe on %s", es.clusterName)
 			es.cleanMetricsTicker.Stop()
 			es.updateDiscoveryTicker.Stop()
 			es.executeClusterDurabilityProbingTicker.Stop()
@@ -140,7 +140,7 @@ func (es *EsProbe) StartEsProbing() error {
 
 		case <-es.updateDiscoveryTicker.C:
 			// Elasticsearch
-			log.Infof("Starting updating ES nodes list %s", es.clusterName)
+			log.Infof("Starting updating ES nodes list on cluster %s", es.clusterName)
 			updatedList, err := common.DiscoverNodesForService(es.consulClient, es.clusterConfig.Name)
 			if err != nil {
 				log.Error("Unable to update ES nodes, using last known state:", err)
@@ -148,13 +148,13 @@ func (es *EsProbe) StartEsProbing() error {
 				continue
 			}
 
-			log.Info("Updating ES nodes list")
+			log.Infof("Updating ES nodes list on cluster %s", es.clusterName)
 			es.allEverKnownEsNodes = common.UpdateEverKnownNodes(es.allEverKnownEsNodes, updatedList)
 			es.esNodesList = updatedList
 
 		case <-es.executeClusterDurabilityProbingTicker.C:
 			sem := new(sync.WaitGroup)
-			log.Infof("Starting probing durability cluster %s", es.clusterName)
+			log.Infof("Starting probing durability for cluster %s", es.clusterName)
 			// Send index state green=> 0, yellow=>...
 			sem.Add(1)
 			// Check index status
@@ -557,6 +557,6 @@ func (es *EsProbe) setIndexStatus(index string) error {
 	} else {
 		indexStatusCode = 2
 	}
-	common.ElasticNodeAvailabilityGauge.WithLabelValues(es.clusterName, index).Set(indexStatusCode)
+	common.IndexProbeStatus.WithLabelValues(es.clusterName, index).Set(indexStatusCode)
 	return nil
 }
