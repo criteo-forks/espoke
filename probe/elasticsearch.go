@@ -112,7 +112,7 @@ func (es *EsProbe) PrepareEsProbing() error {
 		return err
 	}
 
-	if err := es.indexDurabilityDocuments(number_of_current_durability_documents); err != nil {
+	if err := es.fillDurabilityBucketWithMissingDocs(number_of_current_durability_documents); err != nil {
 		return err
 	}
 
@@ -382,7 +382,7 @@ func (es *EsProbe) countNumberOfDurabilityDocs() (float64, float64, error) {
 	return number_of_current_durability_documents, durationMilliSec, nil
 }
 
-func (es *EsProbe) indexDurabilityDocuments(number_of_current_durability_documents float64) error {
+func (es *EsProbe) fillDurabilityBucketWithMissingDocs(number_of_current_durability_documents float64) error {
 	// TODO improve this stage to be faster (bulk?)
 	if int(number_of_current_durability_documents) < es.config.ElasticsearchNumberOfDurabilityDocuments+1 {
 		esDoc := &EsDocument{
@@ -514,7 +514,7 @@ func (es *EsProbe) searchDurabilityDocuments() error {
 	common.ClusterLatencySummary.WithLabelValues(es.clusterName, es.config.ElasticsearchDurabilityIndex, "search").Observe(durationMilliSec)
 	common.ClusterLatencyHistogram.WithLabelValues(es.clusterName, es.config.ElasticsearchDurabilityIndex, "search").Observe(durationMilliSec)
 
-	common.ClusterSearchDocumentsHits.WithLabelValues(es.clusterName, es.config.ElasticsearchDurabilityIndex).Set(total)
+	common.ClusterDurabilitySearchDocumentsHits.WithLabelValues(es.clusterName, es.config.ElasticsearchDurabilityIndex).Set(total)
 	return nil
 }
 
@@ -550,11 +550,12 @@ func (es *EsProbe) setIndexStatus(index string) error {
 		return errors.Errorf("Index status response doesn't contains indices.%s.status field on cluster %s", index, es.clusterName)
 	}
 	var indexStatusCode float64
-	if index_status == "green" {
+	switch index_status {
+	case "green":
 		indexStatusCode = 0
-	} else if index_status == "yellow" {
+	case "yellow":
 		indexStatusCode = 1
-	} else {
+	default:
 		indexStatusCode = 2
 	}
 	common.IndexProbeStatus.WithLabelValues(es.clusterName, index).Set(indexStatusCode)

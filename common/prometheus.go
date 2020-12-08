@@ -19,7 +19,7 @@ var (
 	IndexProbeStatus = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "es_index_probe_status",
-			Help: "Indicate index probe status (green is 1, yellow is 1 and red is 2)",
+			Help: "Indicate index probe status (green is 0, yellow is 1 and red is 2)",
 		},
 		[]string{"cluster", "index"},
 	)
@@ -31,10 +31,10 @@ var (
 		},
 		[]string{"cluster"})
 
-	ClusterSearchDocumentsHits = promauto.NewGaugeVec(
+	ClusterDurabilitySearchDocumentsHits = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "es_cluster_search_documents_hits",
-			Help: "Reports number of documents hits from the search",
+			Name: "es_cluster_durability_search_documents_hits",
+			Help: "Reports number of documents hits from the search on durability index",
 		},
 		[]string{"cluster", "index"})
 
@@ -133,7 +133,7 @@ func CleanClusterMetrics(clusterName string, indexes []string) {
 	ClusterErrorsCount.DeleteLabelValues(clusterName)
 	for _, index := range indexes {
 		IndexProbeStatus.DeleteLabelValues(clusterName, index)
-		ClusterSearchDocumentsHits.DeleteLabelValues(clusterName, index)
+		ClusterDurabilitySearchDocumentsHits.DeleteLabelValues(clusterName, index)
 		for _, operation := range []string{"count", "index", "get", "search", "delete"} {
 			ClusterLatencySummary.DeleteLabelValues(clusterName, index, operation)
 			ClusterLatencyHistogram.DeleteLabelValues(clusterName, index, operation)
