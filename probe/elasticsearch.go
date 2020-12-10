@@ -219,7 +219,7 @@ func (es *EsProbe) StartEsProbing() error {
 					log.Error(err)
 				}
 				common.ClusterLatencySummary.WithLabelValues(es.clusterName, es.config.ElasticsearchLatencyIndex, "index").Observe(durationMilliSec)
-				common.ClusterLatencyHistogram.WithLabelValues(es.clusterName, es.config.ElasticsearchDurabilityIndex, "index").Observe(durationMilliSec)
+				common.ClusterLatencyHistogram.WithLabelValues(es.clusterName, es.config.ElasticsearchLatencyIndex, "index").Observe(durationMilliSec)
 
 				// Get event
 				if err := es.getDocument(es.config.ElasticsearchLatencyIndex, documentID); err != nil {
