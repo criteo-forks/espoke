@@ -40,7 +40,7 @@ func probeKibanaNode(node *common.Node, timeout time.Duration) error {
 		Timeout: timeout,
 	}
 
-	probingURL := fmt.Sprintf("http://%v:%v/api/status", node.Ip, node.Port)
+	probingURL := fmt.Sprintf("%v://%v:%v/api/status", node.Scheme, node.Ip, node.Port)
 	log.Debug("Start probing ", node.Name)
 
 	resp, err := client.Get(probingURL)
