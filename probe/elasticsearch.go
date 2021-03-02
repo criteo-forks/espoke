@@ -264,14 +264,15 @@ func (es *EsProbe) StartEsProbing() error {
 			go func() {
 				defer sem.Done()
 				// Check snapshot policy exist and get last success snapshot
-				snapshotName, isPolicyExist, err := es.getLatestSuccessSnapshot()
+				snapshotName, policyExist, err := es.getLatestSuccessSnapshot()
 				if err != nil {
 					log.Error(err)
 					common.ClusterRestoreErrorsCount.WithLabelValues(es.clusterName).Add(1)
 					return
 				}
 				// Do nothing if policy doesn't exist. It means that the ES cluster doesn't use snapshot feature
-				if !isPolicyExist {
+				if !policyExist {
+					log.Debugf("Policy %s doesn't exist on cluster %s", es.config.ElasticsearchRestoreSnapshotPolicy, es.clusterName)
 					return
 				}
 				// Restore the durability index
@@ -543,7 +544,7 @@ func (es *EsProbe) indexDocument(index, documentID string, esDoc *EsDocument) (f
 	return durationMilliSec, nil
 }
 
-func (es *EsProbe) isIndexExist(index string) (bool, error) {
+func (es *EsProbe) indexExist(index string) (bool, error) {
 	res, err := es.client.Indices.Exists([]string{index})
 	if err != nil {
 		return false, errors.Wrapf(err, "Failed to check if index %s exist", index)
@@ -559,7 +560,7 @@ func (es *EsProbe) isIndexExist(index string) (bool, error) {
 }
 
 func (es *EsProbe) deleteIndex(index string) error {
-	indexExist, err := es.isIndexExist(index)
+	indexExist, err := es.indexExist(index)
 	if err != nil {
 		return err
 	}
@@ -578,7 +579,7 @@ func (es *EsProbe) deleteIndex(index string) error {
 }
 
 func (es *EsProbe) createMissingIndex(index string) error {
-	indexExist, err := es.isIndexExist(index)
+	indexExist, err := es.indexExist(index)
 	if err != nil {
 		return err
 	}
