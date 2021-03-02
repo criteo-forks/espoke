@@ -26,6 +26,7 @@ var (
 	DATA_ES_DOC = "While the exact amount of text data in a kilobyte (KB) or megabyte (MB) can vary " +
 		"depending on the nature of a document, a kilobyte can hold about half of a page of text, while a megabyte " +
 		"holds about 500 pages of text."
+	INDEX_RESTORE = ".espoke.restored"
 )
 
 const millisecondInMinute = 60_000
@@ -53,6 +54,7 @@ type EsProbe struct {
 	executeClusterDurabilityProbingTicker *time.Ticker
 	executeClusterLatencyProbingTicker    *time.Ticker
 	executeNodeProbingTicker              *time.Ticker
+	executeRestoreProbingTicker           *time.Ticker
 
 	esNodesList         []common.Node
 	allEverKnownEsNodes []string
@@ -87,6 +89,7 @@ func NewEsProbe(clusterName, endpoint string, clusterConfig common.Cluster, conf
 		executeClusterDurabilityProbingTicker: time.NewTicker(config.ProbePeriod),
 		executeClusterLatencyProbingTicker:    time.NewTicker(time.Duration(millisecondInMinute/config.LatencyProbeRatePerMin) * time.Millisecond),
 		executeNodeProbingTicker:              time.NewTicker(config.ProbePeriod),
+		executeRestoreProbingTicker:           time.NewTicker(config.RestorePeriod),
 		cleanMetricsTicker:                    time.NewTicker(config.CleaningPeriod),
 
 		esNodesList:         esNodesList,
@@ -107,7 +110,7 @@ func (es *EsProbe) PrepareEsProbing() error {
 	}
 
 	// Count docs on durability index and put docs if needed
-	number_of_current_durability_documents, _, err := es.countNumberOfDurabilityDocs()
+	number_of_current_durability_documents, _, err := es.countNumberOfDurabilityDocs(es.config.ElasticsearchDurabilityIndex)
 	if err != nil {
 		return err
 	}
@@ -129,6 +132,7 @@ func (es *EsProbe) StartEsProbing() error {
 			es.executeClusterDurabilityProbingTicker.Stop()
 			es.executeClusterLatencyProbingTicker.Stop()
 			es.executeNodeProbingTicker.Stop()
+			es.executeRestoreProbingTicker.Stop()
 			common.CleanNodeMetrics(es.esNodesList, es.allEverKnownEsNodes)
 			common.CleanClusterMetrics(es.clusterName, []string{es.config.ElasticsearchDurabilityIndex, es.config.ElasticsearchLatencyIndex})
 			return nil
@@ -170,7 +174,7 @@ func (es *EsProbe) StartEsProbing() error {
 			sem.Add(1)
 			go func() {
 				defer sem.Done()
-				number_of_current_durability_documents, durationMilliSec, err := es.countNumberOfDurabilityDocs()
+				number_of_current_durability_documents, durationMilliSec, err := es.countNumberOfDurabilityDocs(es.config.ElasticsearchDurabilityIndex)
 				if err != nil {
 					common.ClusterErrorsCount.WithLabelValues(es.clusterName).Add(1)
 					log.Error(err)
@@ -249,8 +253,119 @@ func (es *EsProbe) StartEsProbing() error {
 				}(node)
 			}
 			sem.Wait()
+		case <-es.executeRestoreProbingTicker.C:
+			if !es.config.ElasticsearchRestore || strings.HasPrefix(es.clusterConfig.Version, "6") {
+				continue
+			}
+			sem := new(sync.WaitGroup)
+			log.Infof("Starting probing ES restore for cluster %s", es.clusterName)
+
+			sem.Add(1)
+			go func() {
+				defer sem.Done()
+				// Check snapshot policy exist and get last success snapshot
+				snapshotName, isPolicyExist, err := es.getLatestSuccessSnapshot()
+				if err != nil {
+					log.Error(err)
+					common.ClusterRestoreErrorsCount.WithLabelValues(es.clusterName).Add(1)
+					return
+				}
+				// Do nothing if policy doesn't exist. It means that the ES cluster doesn't use snapshot feature
+				if !isPolicyExist {
+					return
+				}
+				// Restore the durability index
+				common.ClusterRestoreCount.WithLabelValues(es.clusterName).Add(1)
+				if err := es.restoreDurabilityIndex(snapshotName); err != nil {
+					log.Error(err)
+					common.ClusterRestoreErrorsCount.WithLabelValues(es.clusterName).Add(1)
+					return
+				}
+				// Count number of documents on the restored index
+				numberOfCurrentDocuments, _, err := es.countNumberOfDurabilityDocs(INDEX_RESTORE)
+				if err != nil {
+					log.Error(err)
+					common.ClusterRestoreErrorsCount.WithLabelValues(es.clusterName).Add(1)
+					return
+				}
+				common.ClusterRestoreDocumentsCount.WithLabelValues(es.clusterName).Set(numberOfCurrentDocuments)
+
+			}()
+			sem.Wait()
 		}
 	}
+}
+
+func (es *EsProbe) getLatestSuccessSnapshot() (string, bool, error) {
+	var r map[string]interface{}
+
+	res, err := es.client.SlmGetLifecycle(
+		es.client.SlmGetLifecycle.WithPolicyID(es.config.ElasticsearchRestoreSnapshotPolicy))
+	if err != nil {
+		return "", false, err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode == 404 {
+		log.Infof("%s doesn't exist on cluster %s", es.config.ElasticsearchRestoreSnapshotPolicy, es.clusterName)
+		return "", false, nil
+	}
+
+	if res.IsError() {
+		return "", false, errors.Errorf("Error getting snapshot policy %s on cluster %s: %s",
+			es.config.ElasticsearchRestoreSnapshotPolicy, es.clusterName, res.String())
+	}
+
+	if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
+		return "", false, err
+	}
+	snapsot_policy, ok := r[es.config.ElasticsearchRestoreSnapshotPolicy].(map[string]interface{})
+	if !ok {
+		return "", false, errors.Errorf("SLM lifecycle response doesn't contains policy %s on cluster %s", es.config.ElasticsearchRestoreSnapshotPolicy, es.clusterName)
+	}
+	last_success, ok := snapsot_policy["last_success"].(map[string]interface{})
+	if !ok {
+		return "", false, errors.Errorf("Policy %s on cluster %s doesn't have any last_success", es.config.ElasticsearchRestoreSnapshotPolicy, es.clusterName)
+	}
+	snapshot_name, ok := last_success["snapshot_name"].(string)
+	if !ok {
+		return "", false, errors.Errorf("Policy %s on cluster %s doesn't have any snapshot_name", es.config.ElasticsearchRestoreSnapshotPolicy, es.clusterName)
+	}
+	return snapshot_name, true, nil
+}
+
+func (es *EsProbe) restoreDurabilityIndex(snapshotName string) error {
+	// Delete index restore to be able to restore it from snapshot
+	es.deleteIndex(INDEX_RESTORE)
+	// Restore index
+	var buf bytes.Buffer
+	restore := map[string]interface{}{
+		"indices":              es.config.ElasticsearchDurabilityIndex,
+		"include_global_state": false,
+		"rename_pattern":       es.config.ElasticsearchDurabilityIndex,
+		"rename_replacement":   INDEX_RESTORE,
+		"include_aliases":      false,
+	}
+	if err := json.NewEncoder(&buf).Encode(restore); err != nil {
+		log.Fatalf("Error encoding restore query: %s", err)
+		return err
+	}
+	res, err := es.client.Snapshot.Restore(
+		es.config.ElasticsearchRestoreSnapshotRepository,
+		snapshotName,
+		es.client.Snapshot.Restore.WithBody(&buf),
+		es.client.Snapshot.Restore.WithWaitForCompletion(true),
+	)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+
+	if res.IsError() {
+		return errors.Errorf("Error restore index %s on cluster %s: %s", INDEX_RESTORE, es.clusterName, res.String())
+	}
+
+	return nil
 }
 
 func probeElasticsearchNode(node *common.Node, timeout time.Duration, username, password string) error {
@@ -354,11 +469,11 @@ func (es *EsProbe) getDocument(index, documentID string) error {
 	return nil
 }
 
-func (es *EsProbe) countNumberOfDurabilityDocs() (float64, float64, error) {
+func (es *EsProbe) countNumberOfDurabilityDocs(index string) (float64, float64, error) {
 	var r map[string]interface{}
 	start := time.Now()
 	res, err := es.client.Count(
-		es.client.Count.WithIndex(es.config.ElasticsearchDurabilityIndex),
+		es.client.Count.WithIndex(index),
 	)
 	durationMilliSec := float64(time.Since(start).Milliseconds())
 
@@ -368,11 +483,11 @@ func (es *EsProbe) countNumberOfDurabilityDocs() (float64, float64, error) {
 	defer res.Body.Close()
 
 	if res.IsError() {
-		return 0, 0, errors.Errorf("Error counting number of durability documents: %s", res.String())
+		return 0, 0, errors.Errorf("Error counting number of documents in %s: %s", index, res.String())
 	}
 
 	if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
-		return 0, 0, errors.Wrapf(err, "Error parsing the durability docs count response body as json")
+		return 0, 0, errors.Wrapf(err, "Error parsing the docs count response body as json in %s: %s", index, res.String())
 	}
 
 	number_of_current_durability_documents, ok := r["count"].(float64)
@@ -428,14 +543,46 @@ func (es *EsProbe) indexDocument(index, documentID string, esDoc *EsDocument) (f
 	return durationMilliSec, nil
 }
 
-func (es *EsProbe) createMissingIndex(index string) error {
+func (es *EsProbe) isIndexExist(index string) (bool, error) {
 	res, err := es.client.Indices.Exists([]string{index})
 	if err != nil {
-		return errors.Wrapf(err, "Failed to check if index %s exist", index)
+		return false, errors.Wrapf(err, "Failed to check if index %s exist", index)
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode == 404 {
+		return false, nil
+	} else if res.IsError() {
+		return false, errors.Errorf("Index exist check for %s response error: %s", index, res.String())
+	}
+	return true, nil
+}
+
+func (es *EsProbe) deleteIndex(index string) error {
+	indexExist, err := es.isIndexExist(index)
+	if err != nil {
+		return err
+	}
+	if indexExist {
+		res, err := es.client.Indices.Delete([]string{index})
+		if err != nil {
+			return errors.Wrapf(err, "Failed to delete index %s", index)
+		}
+		defer res.Body.Close()
+
+		if res.IsError() {
+			return errors.Errorf("Index creation for %s response error: %s", index, res.String())
+		}
+	}
+	return nil
+}
+
+func (es *EsProbe) createMissingIndex(index string) error {
+	indexExist, err := es.isIndexExist(index)
+	if err != nil {
+		return err
+	}
+	if !indexExist {
 		res, err := es.client.Indices.Create(index)
 		if err != nil {
 			return errors.Wrapf(err, "Failed to create index %s", index)
@@ -445,8 +592,6 @@ func (es *EsProbe) createMissingIndex(index string) error {
 		if res.IsError() {
 			return errors.Errorf("Index creation for %s response error: %s", index, res.String())
 		}
-	} else if res.IsError() {
-		return errors.Errorf("Index exist check for %s response error: %s", index, res.String())
 	}
 	return nil
 }

@@ -11,11 +11,11 @@ import (
 
 	log "github.com/sirupsen/logrus"
 )
-
 type ServeCmd struct {
 	ConsulApi                                string        `default:"127.0.0.1:8500" help:"127.0.0.1:8500" help:"consul target api host:port" short:"a"`
 	ConsulPeriod                             time.Duration `default:"120s" help:"nodes discovery update interval"`
 	ProbePeriod                              time.Duration `default:"30s" help:"elasticsearch nodes probing interval for durability and nodes checks"`
+	RestorePeriod                            time.Duration `default:"24h" help:"elasticsearch restore probing interval"`
 	CleaningPeriod                           time.Duration `default:"600s" help:"prometheus metrics cleaning interval (for vanished nodes)"`
 	ElasticsearchConsulTag                   string        `default:"maintenance-elasticsearch" help:"elasticsearch consul tag"`
 	ElasticsearchEndpointSuffix              string        `default:".service.{dc}.foo.bar" help:"Suffix to add after the consul service name to create a valid domain name"`
@@ -24,6 +24,9 @@ type ServeCmd struct {
 	ElasticsearchDurabilityIndex             string        `default:".espoke.durability" help:"Elasticsearch durability index"`
 	ElasticsearchLatencyIndex                string        `default:".espoke.latency" help:"Elasticsearch latency index"`
 	ElasticsearchNumberOfDurabilityDocuments int           `default:"100000" help:"Number of documents to stored in the durability index"`
+	ElasticsearchRestore                     bool          `default:"false" help:"Perform Elasticsearch restore test"`
+	ElasticsearchRestoreSnapshotRepository   string        `default:"ceph_s3" help:"Name of the Elasticsearch snapshot repository"`
+	ElasticsearchRestoreSnapshotPolicy       string        `default:"probe-snapshot" help:"Name of the Elasticsearch snapshot policy"`
 	LatencyProbeRatePerMin                   int           `default:"120" help:"Rate of latency probing per minute (how many checks are done in a minute)"`
 	KibanaConsulTag                          string        `default:"maintenance-kibana" help:"kibana consul tag"`
 	MetricsPort                              int           `default:"2112" help:"port where prometheus will expose metrics to" short:"p"`
@@ -63,6 +66,10 @@ func (r *ServeCmd) Run() error {
 	}
 	log.Info("Metrics pruning interval: ", r.CleaningPeriod.String())
 
+	if r.ElasticsearchRestore {
+		log.Info("Restore interval: ", r.RestorePeriod.String())
+	}
+
 	config := &common.Config{
 		ElasticsearchConsulTag:                   r.ElasticsearchConsulTag,
 		ElasticsearchEndpointSuffix:              r.ElasticsearchEndpointSuffix,
@@ -71,11 +78,15 @@ func (r *ServeCmd) Run() error {
 		ElasticsearchDurabilityIndex:             r.ElasticsearchDurabilityIndex,
 		ElasticsearchLatencyIndex:                r.ElasticsearchLatencyIndex,
 		ElasticsearchNumberOfDurabilityDocuments: r.ElasticsearchNumberOfDurabilityDocuments,
+		ElasticsearchRestore:                     r.ElasticsearchRestore,
+		ElasticsearchRestoreSnapshotRepository:   r.ElasticsearchRestoreSnapshotRepository,
+		ElasticsearchRestoreSnapshotPolicy:       r.ElasticsearchRestoreSnapshotPolicy,
 		LatencyProbeRatePerMin:                   r.LatencyProbeRatePerMin,
 		KibanaConsulTag:                          r.KibanaConsulTag,
 		ConsulApi:                                r.ConsulApi,
 		ConsulPeriod:                             r.ConsulPeriod,
 		ProbePeriod:                              r.ProbePeriod,
+		RestorePeriod:                            r.RestorePeriod,
 		CleaningPeriod:                           r.CleaningPeriod,
 	}
 

@@ -31,12 +31,26 @@ var (
 		},
 		[]string{"cluster"})
 
+	ClusterRestoreDocumentsCount = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "es_cluster_restore_documents_count",
+			Help: "Reports number of documents count in restore index",
+		},
+		[]string{"cluster"})
+
 	ClusterDurabilitySearchDocumentsHits = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "es_cluster_durability_search_documents_hits",
 			Help: "Reports number of documents hits from the search on durability index",
 		},
 		[]string{"cluster", "index"})
+
+	ClusterRestoreCount = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "es_cluster_restore_count",
+			Help: "Reports number of restore launched",
+		},
+		[]string{"cluster"})
 
 	ClusterLatencySummary = promauto.NewSummaryVec(
 		prometheus.SummaryOpts{
@@ -57,6 +71,13 @@ var (
 		},
 		[]string{"cluster", "index", "operation"},
 	)
+
+	ClusterRestoreErrorsCount = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "es_cluster_restore_errors_count",
+			Help: "Reports errors doing restore with a cluster",
+		},
+		[]string{"cluster"})
 
 	ClusterErrorsCount = promauto.NewCounterVec(
 		prometheus.CounterOpts{
@@ -131,6 +152,9 @@ func CleanNodeMetrics(nodes []Node, allEverKnownNodes []string) {
 func CleanClusterMetrics(clusterName string, indexes []string) {
 	ClusterDurabilityDocumentsCount.DeleteLabelValues(clusterName)
 	ClusterErrorsCount.DeleteLabelValues(clusterName)
+	ClusterRestoreCount.DeleteLabelValues(clusterName)
+	ClusterRestoreErrorsCount.DeleteLabelValues(clusterName)
+	ClusterRestoreDocumentsCount.DeleteLabelValues(clusterName)
 	for _, index := range indexes {
 		IndexProbeStatus.DeleteLabelValues(clusterName, index)
 		ClusterDurabilitySearchDocumentsHits.DeleteLabelValues(clusterName, index)

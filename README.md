@@ -24,6 +24,7 @@ Serve Flags:
       --consul-period=120s      nodes discovery update interval
       --probe-period=30s        elasticsearch nodes probing interval for
                                 durability and nodes checks
+      --restore-period=24h      elasticsearch restore probing interval
       --cleaning-period=600s    prometheus metrics cleaning interval (for
                                 vanished nodes)
       --elasticsearch-consul-tag="maintenance-elasticsearch"
@@ -42,6 +43,11 @@ Serve Flags:
       --elasticsearch-number-of-durability-documents=100000
                                 Number of documents to stored in the durability
                                 index
+      --elasticsearch-restore   Perform Elasticsearch restore test
+      --elasticsearch-restore-snapshot-repository="ceph_s3"
+                                Name of the Elasticsearch snapshot repository
+      --elasticsearch-restore-snapshot-policy="probe-snapshot"
+                                Name of the Elasticsearch snapshot policy
       --latency-probe-rate-per-min=120
                                 Rate of latency probing per minute (how many
                                 checks are done in a minute)
@@ -168,6 +174,12 @@ es_index_probe_status{cluster="cluster",index=".espoke.latency"} 0
 # HELP es_node_availability Reflects elasticsearch node availability : 1 is OK, 0 means node unavailable 
 # TYPE es_node_availability gauge
 es_node_availability{cluster="cluster",node_name="node_name"} 1
+# HELP es_cluster_restore_count Reports number of restore launched
+# TYPE es_cluster_restore_count gauge
+es_cluster_restore_count{cluster="cluster"} 2
+# HELP es_cluster_restore_documents_count Reports number of documents count in restore index
+# TYPE es_cluster_restore_documents_count gauge
+es_cluster_restore_documents_count{cluster="cluster"} 100000
 # HELP es_node_cat_latency Measure latency to query cat api for every node (quantiles - in ns)
 # TYPE es_node_cat_latency summary
 es_node_cat_latency_sum{cluster="cluster",node_name="node_name"} 25
