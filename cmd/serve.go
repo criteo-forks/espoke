@@ -19,6 +19,7 @@ type ServeCmd struct {
 	CleaningPeriod                           time.Duration `default:"600s" help:"prometheus metrics cleaning interval (for vanished nodes)"`
 	ElasticsearchConsulTag                   string        `default:"maintenance-elasticsearch" help:"elasticsearch consul tag"`
 	ElasticsearchEndpointSuffix              string        `default:".service.{dc}.foo.bar" help:"Suffix to add after the consul service name to create a valid domain name"`
+	ElasticsearchEndpointPort                int           `default:"-1" help:"Elasticsearch port used for cluster authentication"`
 	ElasticsearchUser                        string        `help:"Elasticsearch username"`
 	ElasticsearchPassword                    string        `help:"Elasticsearch password"`
 	ElasticsearchDurabilityIndex             string        `default:".espoke.durability" help:"Elasticsearch durability index"`
@@ -73,6 +74,7 @@ func (r *ServeCmd) Run() error {
 	config := &common.Config{
 		ElasticsearchConsulTag:                   r.ElasticsearchConsulTag,
 		ElasticsearchEndpointSuffix:              r.ElasticsearchEndpointSuffix,
+		ElasticsearchEndpointPort:                r.ElasticsearchEndpointPort,
 		ElasticsearchUser:                        r.ElasticsearchUser,
 		ElasticsearchPassword:                    r.ElasticsearchPassword,
 		ElasticsearchDurabilityIndex:             r.ElasticsearchDurabilityIndex,

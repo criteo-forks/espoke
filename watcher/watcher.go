@@ -82,7 +82,7 @@ func (w *Watcher) createNewEsProbes(servicesToAdd map[string]common.Cluster) {
 	for cluster, clusterConfig := range servicesToAdd {
 		log.Printf("Creating new es probe for: %s", cluster)
 
-		endpoint, err := common.GetEndpointFromConsul(w.consulClient, clusterConfig.Name, w.config.ElasticsearchEndpointSuffix)
+		endpoint, err := common.GetEndpointFromConsul(w.consulClient, clusterConfig.Name, w.config.ElasticsearchEndpointSuffix, w.config.ElasticsearchEndpointPort)
 		if err != nil {
 			log.Errorf("Could not generate endpoint from consul: %s", err.Error())
 			common.ErrorsCount.Inc()

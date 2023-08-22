@@ -107,19 +107,27 @@ func GetServices(consul *api.Client, consulTag string) (map[string]Cluster, erro
 	return services, nil
 }
 
-func GetEndpointFromConsul(consul *api.Client, name, endpointSuffix string) (string, error) {
+func GetEndpointFromConsul(consul *api.Client, name, endpointSuffix string, endpointPort int) (string, error) {
 	endpoint := ""
 
 	health := consul.Health()
 	serviceEntries, _, _ := health.Service(name, "", false, nil)
 
-	port, err := getServicePort(serviceEntries)
-	if err != nil {
-		return endpoint, err
+	if endpointPort == -1 {
+		var err error
+		endpointPort, err = getServicePort(serviceEntries)
+		if err != nil {
+			return "", err
+		}
 	}
+
 	dc, err := getDatacenter(serviceEntries)
+	if err != nil {
+		return "", err
+	}
+
 	endpointSuffixWithDC := strings.ReplaceAll(endpointSuffix, "{dc}", dc)
-	endpoint = fmt.Sprintf("%s%s:%d", name, endpointSuffixWithDC, port)
+	endpoint = fmt.Sprintf("%s%s:%d", name, endpointSuffixWithDC, endpointPort)
 
 	return endpoint, nil
 }

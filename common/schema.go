@@ -20,6 +20,7 @@ type Cluster struct {
 type Config struct {
 	ElasticsearchConsulTag                   string
 	ElasticsearchEndpointSuffix              string
+	ElasticsearchEndpointPort                int
 	ElasticsearchUser                        string
 	ElasticsearchPassword                    string
 	ElasticsearchDurabilityIndex             string

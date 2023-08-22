@@ -32,6 +32,8 @@ Serve Flags:
       --elasticsearch-endpoint-suffix=".service.{dc}.foo.bar"
                                 Suffix to add after the consul service name to
                                 create a valid domain name
+      --elasticsearch-endpoint-port=-1
+                                Elasticsearch port used for cluster authentication
       --elasticsearch-user=STRING
                                 Elasticsearch username
       --elasticsearch-password=STRING
