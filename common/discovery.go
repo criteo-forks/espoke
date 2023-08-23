@@ -113,7 +113,7 @@ func GetEndpointFromConsul(consul *api.Client, name, endpointSuffix string, endp
 	health := consul.Health()
 	serviceEntries, _, _ := health.Service(name, "", false, nil)
 
-	if endpointPort == -1 {
+	if endpointPort == 0 {
 		var err error
 		endpointPort, err = getServicePort(serviceEntries)
 		if err != nil {
