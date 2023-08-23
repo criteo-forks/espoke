@@ -33,7 +33,7 @@ Serve Flags:
                                 Suffix to add after the consul service name to
                                 create a valid domain name
       --elasticsearch-endpoint-port=0
-                                Elasticsearch port used for cluster authentication
+                                Elasticsearch port used for cluster level calls
       --elasticsearch-user=STRING
                                 Elasticsearch username
       --elasticsearch-password=STRING
