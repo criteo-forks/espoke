@@ -19,6 +19,7 @@ import (
 type KibanaProbe struct {
 	clusterName   string
 	clusterConfig common.Cluster
+	config        *common.Config
 
 	consulClient *api.Client
 
@@ -34,7 +35,7 @@ type KibanaProbe struct {
 	controlChan chan bool
 }
 
-func probeKibanaNode(node *common.Node, timeout time.Duration) error {
+func probeKibanaNode(node *common.Node, timeout time.Duration, username, password string) error {
 	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	client := &http.Client{
 		Timeout: timeout,
@@ -43,7 +44,12 @@ func probeKibanaNode(node *common.Node, timeout time.Duration) error {
 	probingURL := fmt.Sprintf("%v://%v:%v/api/status", node.Scheme, node.Ip, node.Port)
 	log.Debug("Start probing ", node.Name)
 
-	resp, err := client.Get(probingURL)
+	req, err := http.NewRequest("GET", probingURL, nil)
+	if err != nil {
+		return err
+	}
+	req.SetBasicAuth(username, password)
+	resp, err := client.Do(req)
 	if err != nil {
 		log.Debug("Probing failed for ", node.Name, ": ", probingURL, " ", err.Error())
 		return err
@@ -87,6 +93,7 @@ func NewKibanaProbe(clusterName string, clusterConfig common.Cluster, config *co
 	return KibanaProbe{
 		clusterName:   clusterName,
 		clusterConfig: clusterConfig,
+		config:        config,
 
 		consulClient: consulClient,
 
@@ -140,7 +147,7 @@ func (kibana *KibanaProbe) StartKibanaProbing() error {
 				sem.Add(1)
 				go func(kibanaNode common.Node) {
 					defer sem.Done()
-					if err := probeKibanaNode(&kibanaNode, kibana.timeout); err != nil {
+					if err := probeKibanaNode(&kibanaNode, kibana.timeout, kibana.config.ElasticsearchUser, kibana.config.ElasticsearchPassword); err != nil {
 						log.Errorf("Failed on %s: %s", kibana.clusterName, err.Error())
 						common.KibanaNodeAvailabilityGauge.WithLabelValues(kibanaNode.Cluster, kibanaNode.Name).Set(0)
 						common.ErrorsCount.Inc()
