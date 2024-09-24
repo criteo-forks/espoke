@@ -80,7 +80,7 @@ type EsProbe struct {
 	controlChan chan bool
 }
 
-func NewEsProbe(clusterName string, endpoint string, clusterConfig common.Cluster, config *common.Config, consulClient *api.Client, controlChan chan bool) (EsProbe, error) {
+func NewEsProbe(clusterName string, clusterConfig common.Cluster, config *common.Config, consulClient *api.Client, controlChan chan bool) (EsProbe, error) {
 	var allEverKnownEsNodes []string
 	esNodesList, err := common.DiscoverNodesForService(consulClient, clusterConfig.Name)
 	if err != nil {
@@ -88,7 +88,7 @@ func NewEsProbe(clusterName string, endpoint string, clusterConfig common.Cluste
 	}
 	allEverKnownEsNodes = common.UpdateEverKnownNodes(allEverKnownEsNodes, esNodesList)
 
-	client, err := initEsClient(clusterConfig.Scheme, endpoint, config.ElasticsearchUser, config.ElasticsearchPassword)
+	client, err := initEsClient(clusterConfig.Scheme, clusterConfig.Endpoint, config.ElasticsearchUser, config.ElasticsearchPassword)
 	if err != nil {
 		return EsProbe{}, errors.Wrapf(err, "Failed to init elasticsearch client for cluster %s", clusterName)
 	}

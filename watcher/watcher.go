@@ -90,8 +90,10 @@ func (w *Watcher) createNewEsProbes(servicesToAdd map[string]common.Cluster) {
 			continue
 		}
 
+		clusterConfig.Endpoint = endpoint
+
 		probeChan = make(chan bool)
-		esProbe, err := probe.NewEsProbe(cluster, endpoint, clusterConfig, w.config, w.consulClient, probeChan)
+		esProbe, err := probe.NewEsProbe(cluster, clusterConfig, w.config, w.consulClient, probeChan)
 
 		if err != nil {
 			log.Errorf("Error while creating probe: %s", err.Error())
