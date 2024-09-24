@@ -1,11 +1,12 @@
 package watcher
 
 import (
+	"time"
+
 	"github.com/criteo-forks/espoke/common"
 	"github.com/criteo-forks/espoke/probe"
 	"github.com/hashicorp/consul/api"
 	log "github.com/sirupsen/logrus"
-	"time"
 )
 
 // Watcher manages the pool of S3 endpoints to monitor

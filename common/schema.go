@@ -36,4 +36,5 @@ type Config struct {
 	ProbePeriod                              time.Duration
 	RestorePeriod                            time.Duration
 	CleaningPeriod                           time.Duration
+	Opensearch                               bool
 }

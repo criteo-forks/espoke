@@ -4,13 +4,15 @@
 package cmd
 
 import (
-	"github.com/criteo-forks/espoke/common"
-	"github.com/criteo-forks/espoke/watcher"
 	"os"
 	"time"
 
+	"github.com/criteo-forks/espoke/common"
+	"github.com/criteo-forks/espoke/watcher"
+
 	log "github.com/sirupsen/logrus"
 )
+
 type ServeCmd struct {
 	ConsulApi                                string        `default:"127.0.0.1:8500" help:"127.0.0.1:8500" help:"consul target api host:port" short:"a"`
 	ConsulPeriod                             time.Duration `default:"120s" help:"nodes discovery update interval"`
@@ -27,11 +29,12 @@ type ServeCmd struct {
 	ElasticsearchNumberOfDurabilityDocuments int           `default:"100000" help:"Number of documents to stored in the durability index"`
 	ElasticsearchRestore                     bool          `default:"false" help:"Perform Elasticsearch restore test"`
 	ElasticsearchRestoreSnapshotRepository   string        `default:"ceph_s3" help:"Name of the Elasticsearch snapshot repository"`
-	ElasticsearchRestoreSnapshotPolicy       string        `default:"probe-snapshot" help:"Name of the Elasticsearch snapshot policy"`
+	ElasticsearchRestoreSnapshotPolicy       string        `default:"probe-snapshot-sm" help:"Name of the Elasticsearch snapshot policy"`
 	LatencyProbeRatePerMin                   int           `default:"120" help:"Rate of latency probing per minute (how many checks are done in a minute)"`
 	KibanaConsulTag                          string        `default:"maintenance-kibana" help:"kibana consul tag"`
 	MetricsPort                              int           `default:"2112" help:"port where prometheus will expose metrics to" short:"p"`
 	LogLevel                                 string        `default:"info" help:"log level" yaml:"log_level" short:"l"`
+	Opensearch                               bool          `default:"true" help:"Probe monitors opensearch clusters"`
 }
 
 func (r *ServeCmd) Run() error {
@@ -71,6 +74,10 @@ func (r *ServeCmd) Run() error {
 		log.Info("Restore interval: ", r.RestorePeriod.String())
 	}
 
+	if r.Opensearch {
+		log.Info("Opensearch: yes")
+	}
+
 	config := &common.Config{
 		ElasticsearchConsulTag:                   r.ElasticsearchConsulTag,
 		ElasticsearchEndpointSuffix:              r.ElasticsearchEndpointSuffix,
@@ -90,6 +97,7 @@ func (r *ServeCmd) Run() error {
 		ProbePeriod:                              r.ProbePeriod,
 		RestorePeriod:                            r.RestorePeriod,
 		CleaningPeriod:                           r.CleaningPeriod,
+		Opensearch:                               r.Opensearch,
 	}
 
 	w, err := watcher.NewWatcher(config)
