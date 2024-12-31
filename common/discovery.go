@@ -13,7 +13,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-//TODO detect probe stuck
+// TODO detect probe stuck
 func UpdateEverKnownNodes(allEverKnownNodes []string, nodes []Node) []string {
 	for _, node := range nodes {
 		// TODO: Replace by a real struct instead of a string concatenation...
@@ -39,8 +39,8 @@ func NewClient(consulTarget string) (*api.Client, error) {
 }
 
 func DiscoverNodesForService(consul *api.Client, serviceName string) ([]Node, error) {
-	catalogServices, _, err := consul.Catalog().Service(
-		serviceName, "",
+	services, _, err := consul.Health().Service(
+		serviceName, "", true,
 		&api.QueryOptions{AllowStale: true, RequireConsistent: false},
 	)
 	if err != nil {
@@ -50,24 +50,21 @@ func DiscoverNodesForService(consul *api.Client, serviceName string) ([]Node, er
 	}
 
 	var nodeList []Node
-	for _, svc := range catalogServices {
-		var addr = svc.Address
-		if svc.ServiceAddress != "" {
-			addr = svc.ServiceAddress
-		}
+	for _, svc := range services {
+		var addr = svc.Node.Address
 
-		node_name := svc.Node
-		if fqdn, ok := svc.NodeMeta["fqdn"]; ok {
+		node_name := svc.Node.Node
+		if fqdn, ok := svc.Node.Meta["fqdn"]; ok {
 			node_name = fqdn
 		}
 
-		log.Debug("Service discovered: ", node_name, " (", addr, ":", svc.ServicePort, ")")
+		log.Debug("Service discovered: ", node_name, " (", addr, ":", svc.Service.Port, ")")
 		nodeList = append(nodeList, Node{
 			Name:    node_name,
 			Ip:      addr,
-			Port:    svc.ServicePort,
-			Scheme:  schemeFromTags(svc.ServiceTags),
-			Cluster: valueFromTags("cluster_name", svc.ServiceTags),
+			Port:    svc.Service.Port,
+			Scheme:  schemeFromTags(svc.Service.Tags),
+			Cluster: valueFromTags("cluster_name", svc.Service.Tags),
 		})
 	}
 
