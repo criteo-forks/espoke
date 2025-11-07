@@ -51,17 +51,22 @@ func DiscoverNodesForService(consul *api.Client, serviceName string) ([]Node, er
 
 	var nodeList []Node
 	for _, svc := range services {
-		var addr = svc.Node.Address
+		// Node Address is always the IP of the host running consul
+		// whereas Service address is the actual IP of the service.
+		// With Cilium, we need the Service address (which is the Pod address)
+		var addr = svc.Service.Address
 
-		node_name := svc.Node.Node
+		node_name := svc.Service.Meta["k8s_pod"]
+		host_name := svc.Node.Node
 		if fqdn, ok := svc.Node.Meta["fqdn"]; ok {
-			node_name = fqdn
+			host_name = fqdn
 		}
 
-		log.Debug("Service discovered: ", node_name, " (", addr, ":", svc.Service.Port, ")")
+		log.Debug("Service discovered: ", node_name, " running on ", host_name, " (", addr, ":", svc.Service.Port, ")")
 		nodeList = append(nodeList, Node{
 			Name:    node_name,
 			Ip:      addr,
+			Host:    host_name,
 			Port:    svc.Service.Port,
 			Scheme:  schemeFromTags(svc.Service.Tags),
 			Cluster: valueFromTags("cluster_name", svc.Service.Tags),

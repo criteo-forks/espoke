@@ -96,7 +96,7 @@ var (
 			Name: "es_node_availability",
 			Help: "Reflects elasticsearch node availability : 1 is OK, 0 means node unavailable ",
 		},
-		[]string{"cluster", "node_name"},
+		[]string{"cluster", "node_name", "host_name"},
 	)
 
 	KibanaNodeAvailabilityGauge = promauto.NewGaugeVec(
@@ -104,7 +104,7 @@ var (
 			Name: "kibana_node_availability",
 			Help: "Reflects kibana node availability : 1 is OK, 0 means node unavailable ",
 		},
-		[]string{"cluster", "node_name"},
+		[]string{"cluster", "node_name", "host_name"},
 	)
 
 	NodeCatLatencySummary = promauto.NewSummaryVec(
@@ -115,7 +115,7 @@ var (
 			AgeBuckets: 20,               // default value * 4
 			BufCap:     2000,             // default value * 4
 		},
-		[]string{"cluster", "node_name"},
+		[]string{"cluster", "node_name", "host_name"},
 	)
 )
 
