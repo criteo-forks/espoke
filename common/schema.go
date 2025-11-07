@@ -5,6 +5,7 @@ import "time"
 type Node struct {
 	Name    string
 	Ip      string
+	Pod     string
 	Port    int
 	Cluster string
 	Scheme  string
