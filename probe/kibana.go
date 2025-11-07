@@ -5,12 +5,13 @@ package probe
 import (
 	"crypto/tls"
 	"fmt"
-	"github.com/criteo-forks/espoke/common"
-	"github.com/hashicorp/consul/api"
 	"io/ioutil"
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/criteo-forks/espoke/common"
+	"github.com/hashicorp/consul/api"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/valyala/fastjson"
@@ -76,7 +77,7 @@ func probeKibanaNode(node *common.Node, timeout time.Duration, username, passwor
 		return fmt.Errorf("kibana Probing failed: node not in a green/healthy state")
 	}
 
-	common.KibanaNodeAvailabilityGauge.WithLabelValues(node.Cluster, node.Name).Set(1)
+	common.KibanaNodeAvailabilityGauge.WithLabelValues(node.Cluster, node.Name, node.Pod).Set(1)
 
 	return nil
 }
@@ -149,7 +150,7 @@ func (kibana *KibanaProbe) StartKibanaProbing() error {
 					defer sem.Done()
 					if err := probeKibanaNode(&kibanaNode, kibana.timeout, kibana.config.ElasticsearchUser, kibana.config.ElasticsearchPassword); err != nil {
 						log.Errorf("Failed on %s: %s", kibana.clusterName, err.Error())
-						common.KibanaNodeAvailabilityGauge.WithLabelValues(kibanaNode.Cluster, kibanaNode.Name).Set(0)
+						common.KibanaNodeAvailabilityGauge.WithLabelValues(kibanaNode.Cluster, kibanaNode.Name, kibanaNode.Pod).Set(0)
 						common.ErrorsCount.Inc()
 					}
 				}(node)

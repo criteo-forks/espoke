@@ -18,7 +18,7 @@ func UpdateEverKnownNodes(allEverKnownNodes []string, nodes []Node) []string {
 	for _, node := range nodes {
 		// TODO: Replace by a real struct instead of a string concatenation...
 		// also allEverKnownNodes leak memory as it never delete old/cleaned items
-		serializedNode := fmt.Sprintf("%v|%v", node.Name, node.Cluster)
+		serializedNode := fmt.Sprintf("%v|%v|%v", node.Name, node.Cluster, node.Pod)
 		if contains(allEverKnownNodes, serializedNode) == false {
 			allEverKnownNodes = append(allEverKnownNodes, serializedNode)
 		}
@@ -51,17 +51,22 @@ func DiscoverNodesForService(consul *api.Client, serviceName string) ([]Node, er
 
 	var nodeList []Node
 	for _, svc := range services {
-		var addr = svc.Node.Address
+		// Node Address is always the IP of the host running consul
+		// whereas Service address is the actual IP of the service.
+		// With Cilium, we need the Service address (which is the Pod address)
+		var addr = svc.Service.Address
 
+		exported_pod := svc.Service.Meta["k8s_pod"]
 		node_name := svc.Node.Node
 		if fqdn, ok := svc.Node.Meta["fqdn"]; ok {
 			node_name = fqdn
 		}
 
-		log.Debug("Service discovered: ", node_name, " (", addr, ":", svc.Service.Port, ")")
+		log.Debug("Service discovered: ", exported_pod, " running on ", node_name, " (", addr, ":", svc.Service.Port, ")")
 		nodeList = append(nodeList, Node{
 			Name:    node_name,
 			Ip:      addr,
+			Pod:     exported_pod,
 			Port:    svc.Service.Port,
 			Scheme:  schemeFromTags(svc.Service.Tags),
 			Cluster: valueFromTags("cluster_name", svc.Service.Tags),

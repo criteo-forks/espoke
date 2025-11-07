@@ -96,7 +96,7 @@ var (
 			Name: "es_node_availability",
 			Help: "Reflects elasticsearch node availability : 1 is OK, 0 means node unavailable ",
 		},
-		[]string{"cluster", "node_name"},
+		[]string{"cluster", "node_name", "exported_pod"},
 	)
 
 	KibanaNodeAvailabilityGauge = promauto.NewGaugeVec(
@@ -104,7 +104,7 @@ var (
 			Name: "kibana_node_availability",
 			Help: "Reflects kibana node availability : 1 is OK, 0 means node unavailable ",
 		},
-		[]string{"cluster", "node_name"},
+		[]string{"cluster", "node_name", "exported_pod"},
 	)
 
 	NodeCatLatencySummary = promauto.NewSummaryVec(
@@ -115,7 +115,7 @@ var (
 			AgeBuckets: 20,               // default value * 4
 			BufCap:     2000,             // default value * 4
 		},
-		[]string{"cluster", "node_name"},
+		[]string{"cluster", "node_name", "exported_pod"},
 	)
 )
 
@@ -130,21 +130,21 @@ func StartMetricsEndpoint(metricsPort int) {
 // TODO add cluster ones to be cleaned
 func CleanNodeMetrics(nodes []Node, allEverKnownNodes []string) {
 	for _, nodeSerializedString := range allEverKnownNodes {
-		n := strings.SplitN(nodeSerializedString, "|", 2) // [0]: name , [1] cluster
+		n := strings.SplitN(nodeSerializedString, "|", 3) // [0]: name , [1] cluster, [2] pod name
 
 		deleteThisNodeMetrics := true
 		for _, node := range nodes {
-			if (node.Name == n[0]) && (node.Cluster == n[1]) {
-				log.Debug("Metrics are live for node ", n[0], " from cluster ", n[1], " - keeping them")
+			if (node.Name == n[0]) && (node.Cluster == n[1]) && (node.Pod == n[2]) {
+				log.Debug("Metrics are live for node ", n[0], " and pod ", n[2], " from cluster ", n[1], " - keeping them")
 				deleteThisNodeMetrics = false
 				continue
 			}
 		}
 		if deleteThisNodeMetrics {
 			log.Info("Metrics removed for vanished node ", n[0], " from cluster ", n[1])
-			ElasticNodeAvailabilityGauge.DeleteLabelValues(n[1], n[0])
-			NodeCatLatencySummary.DeleteLabelValues(n[1], n[0])
-			KibanaNodeAvailabilityGauge.DeleteLabelValues(n[1], n[0])
+			ElasticNodeAvailabilityGauge.DeleteLabelValues(n[1], n[0], n[2])
+			NodeCatLatencySummary.DeleteLabelValues(n[1], n[0], n[2])
+			KibanaNodeAvailabilityGauge.DeleteLabelValues(n[1], n[0], n[2])
 		}
 	}
 }

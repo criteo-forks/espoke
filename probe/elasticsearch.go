@@ -264,7 +264,7 @@ func (es *EsProbe) StartEsProbing() error {
 				go func(esNode common.Node) {
 					defer sem.Done()
 					if err := probeElasticsearchNode(&esNode, es.timeout, es.config.ElasticsearchUser, es.config.ElasticsearchPassword); err != nil {
-						common.ElasticNodeAvailabilityGauge.WithLabelValues(esNode.Cluster, esNode.Name).Set(0)
+						common.ElasticNodeAvailabilityGauge.WithLabelValues(esNode.Cluster, esNode.Name, esNode.Pod).Set(0)
 						common.ClusterErrorsCount.WithLabelValues(es.clusterName).Add(1)
 						log.Error(err)
 					}
@@ -470,8 +470,8 @@ func probeElasticsearchNode(node *common.Node, timeout time.Duration, username, 
 		return fmt.Errorf("ES Probing failed")
 	}
 
-	common.ElasticNodeAvailabilityGauge.WithLabelValues(node.Cluster, node.Name).Set(1)
-	common.NodeCatLatencySummary.WithLabelValues(node.Cluster, node.Name).Observe(durationMilliSec)
+	common.ElasticNodeAvailabilityGauge.WithLabelValues(node.Cluster, node.Name, node.Pod).Set(1)
+	common.NodeCatLatencySummary.WithLabelValues(node.Cluster, node.Name, node.Pod).Observe(durationMilliSec)
 
 	return nil
 }
