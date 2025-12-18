@@ -25,12 +25,10 @@ type ServeCmd struct {
 	ElasticsearchUser                        string        `help:"Elasticsearch username"`
 	ElasticsearchPassword                    string        `help:"Elasticsearch password"`
 	ElasticsearchDurabilityIndex             string        `default:".espoke.durability" help:"Elasticsearch durability index"`
-	ElasticsearchLatencyIndex                string        `default:".espoke.latency" help:"Elasticsearch latency index"`
 	ElasticsearchNumberOfDurabilityDocuments int           `default:"100000" help:"Number of documents to stored in the durability index"`
 	ElasticsearchRestore                     bool          `default:"false" help:"Perform Elasticsearch restore test"`
 	ElasticsearchRestoreSnapshotRepository   string        `default:"ceph_s3" help:"Name of the Elasticsearch snapshot repository"`
 	ElasticsearchRestoreSnapshotPolicy       string        `default:"probe-snapshot-sm" help:"Name of the Elasticsearch snapshot policy"`
-	LatencyProbeRatePerMin                   int           `default:"120" help:"Rate of latency probing per minute (how many checks are done in a minute)"`
 	KibanaConsulTag                          string        `default:"maintenance-kibana" help:"kibana consul tag"`
 	MetricsPort                              int           `default:"2112" help:"port where prometheus will expose metrics to" short:"p"`
 	LogLevel                                 string        `default:"info" help:"log level" yaml:"log_level" short:"l"`
@@ -84,13 +82,10 @@ func (r *ServeCmd) Run() error {
 		ElasticsearchEndpointPort:                r.ElasticsearchEndpointPort,
 		ElasticsearchUser:                        r.ElasticsearchUser,
 		ElasticsearchPassword:                    r.ElasticsearchPassword,
-		ElasticsearchDurabilityIndex:             r.ElasticsearchDurabilityIndex,
-		ElasticsearchLatencyIndex:                r.ElasticsearchLatencyIndex,
 		ElasticsearchNumberOfDurabilityDocuments: r.ElasticsearchNumberOfDurabilityDocuments,
 		ElasticsearchRestore:                     r.ElasticsearchRestore,
 		ElasticsearchRestoreSnapshotRepository:   r.ElasticsearchRestoreSnapshotRepository,
 		ElasticsearchRestoreSnapshotPolicy:       r.ElasticsearchRestoreSnapshotPolicy,
-		LatencyProbeRatePerMin:                   r.LatencyProbeRatePerMin,
 		KibanaConsulTag:                          r.KibanaConsulTag,
 		ConsulApi:                                r.ConsulApi,
 		ConsulPeriod:                             r.ConsulPeriod,
