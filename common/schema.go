@@ -25,12 +25,10 @@ type Config struct {
 	ElasticsearchUser                        string
 	ElasticsearchPassword                    string
 	ElasticsearchDurabilityIndex             string
-	ElasticsearchLatencyIndex                string
 	ElasticsearchNumberOfDurabilityDocuments int
 	ElasticsearchRestore                     bool
 	ElasticsearchRestoreSnapshotRepository   string
 	ElasticsearchRestoreSnapshotPolicy       string
-	LatencyProbeRatePerMin                   int
 	KibanaConsulTag                          string
 	ConsulApi                                string
 	ConsulPeriod                             time.Duration
